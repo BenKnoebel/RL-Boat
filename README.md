@@ -87,10 +87,14 @@ pip install -r requirements.txt
 
 ### Testing the Environment
 
-Run the test script to verify the environment is working correctly:
+Run the test scripts to verify the environment is working correctly:
 
 ```bash
+# Test with random agent and verify dynamics
 python examples/test_environment.py
+
+# Test controlled movement in a square pattern (great for visualization!)
+python examples/test_square_pattern.py
 ```
 
 ## Project Structure
@@ -102,7 +106,8 @@ RL-Boat/
 │   ├── boat_env.py          # Main Gym environment implementation
 │   └── renderer.py          # Matplotlib visualization renderer
 ├── examples/
-│   └── test_environment.py  # Example usage and testing
+│   ├── test_environment.py  # Random agent testing
+│   └── test_square_pattern.py  # Controlled square pattern demo
 ├── requirements.txt         # Project dependencies
 └── README.md
 ```
