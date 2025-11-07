@@ -2,7 +2,7 @@
 Test script to verify boat dynamics and visualization with a controlled square pattern.
 
 This script makes the boat:
-1. Move forward in a straight line for 20 seconds
+1. Move forward in a straight line for 5 seconds
 2. Rotate 90 degrees to the left
 3. Repeat this process 3 more times to complete a square
 
@@ -28,7 +28,7 @@ def test_square_pattern():
     Test the boat by making it move in a square pattern.
 
     The boat will:
-    - Move forward for 20 seconds (both rudders forward)
+    - Move forward for 5 seconds (both rudders forward)
     - Rotate 90 degrees left (left backward, right forward)
     - Repeat 4 times total
     """
@@ -36,7 +36,7 @@ def test_square_pattern():
     print("RL-Boat Square Pattern Test")
     print("=" * 70)
     print("This test demonstrates controlled boat movement:")
-    print("- The boat will move forward for 20 seconds")
+    print("- The boat will move forward for 5 seconds")
     print("- Then rotate 90 degrees to the left")
     print("- This repeats 4 times to form a square pattern")
     print()
@@ -64,8 +64,8 @@ def test_square_pattern():
 
     # Simulation parameters
     dt = env.dt  # Time step from environment (0.1 seconds)
-    forward_duration = 20.0  # seconds
-    forward_steps = int(forward_duration / dt)  # Number of steps for 20 seconds
+    forward_duration = 5.0  # seconds
+    forward_steps = int(forward_duration / dt)  # Number of steps for 5 seconds
 
     # Action definitions
     ACTION_BOTH_FORWARD = 5  # Both rudders forward
@@ -79,7 +79,7 @@ def test_square_pattern():
         start_pos = state[:2].copy()
         start_angle = state[2]
 
-        # Move forward for 20 seconds
+        # Move forward for 5 seconds
         print(f"Moving forward for {forward_duration} seconds...")
         for step in range(forward_steps):
             state, reward, terminated, truncated, info = env.step(ACTION_BOTH_FORWARD)
