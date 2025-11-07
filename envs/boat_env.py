@@ -8,6 +8,7 @@ navigating in a 2D plane towards a goal location.
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
+from envs.renderer import BoatRenderer
 
 
 class BoatEnv(gym.Env):
@@ -49,7 +50,8 @@ class BoatEnv(gym.Env):
                  rudder_force=5.0,
                  lever_arm=1.0,
                  friction_coeff=0.1,
-                 dt=0.1):
+                 dt=0.1,
+                 render_mode=None):
         """
         Initialize the Boat Environment.
 
@@ -63,8 +65,11 @@ class BoatEnv(gym.Env):
             lever_arm: Distance from boat center to rudder (m)
             friction_coeff: Linear friction coefficient
             dt: Time step for simulation (seconds)
+            render_mode: Mode for rendering ('human' for visualization, None for no rendering)
         """
         super().__init__()
+
+        self.render_mode = render_mode
 
         # Environment parameters
         self.goal_position = np.array(goal_position) if goal_position is not None else None
@@ -111,6 +116,11 @@ class BoatEnv(gym.Env):
         self.state = None
         self.steps = 0
 
+        # Renderer for visualization
+        self.renderer = None
+        if self.render_mode == 'human':
+            self.renderer = BoatRenderer(bounds=self.bounds)
+
     def reset(self, seed=None, options=None):
         """
         Reset the environment to initial state.
@@ -136,6 +146,10 @@ class BoatEnv(gym.Env):
             self.goal_position = np.array([goal_x, goal_y])
 
         self.steps = 0
+
+        # Reset renderer if visualization is enabled
+        if self.renderer is not None:
+            self.renderer.reset()
 
         info = {
             'goal_position': self.goal_position.copy(),
@@ -191,6 +205,10 @@ class BoatEnv(gym.Env):
             'steps': self.steps,
             'goal_position': self.goal_position.copy()
         }
+
+        # Render if visualization is enabled
+        if self.render_mode == 'human':
+            self.render()
 
         return self.state.copy(), reward, terminated, truncated, info
 
@@ -250,19 +268,30 @@ class BoatEnv(gym.Env):
 
     def render(self):
         """
-        Render the environment (placeholder for future visualization).
+        Render the environment using matplotlib visualization.
         """
         if self.state is None:
             return None
 
-        # Basic console rendering
-        distance = self._distance_to_goal()
-        print(f"Position: ({self.state[0]:.2f}, {self.state[1]:.2f}), "
-              f"Angle: {np.degrees(self.state[2]):.1f}°, "
-              f"Distance to goal: {distance:.2f}")
+        if self.render_mode == 'human' and self.renderer is not None:
+            distance = self._distance_to_goal()
+            self.renderer.render(
+                self.state,
+                self.goal_position,
+                self.goal_radius,
+                distance,
+                self.steps
+            )
+        elif self.render_mode is None:
+            # Basic console rendering for backward compatibility
+            distance = self._distance_to_goal()
+            print(f"Position: ({self.state[0]:.2f}, {self.state[1]:.2f}), "
+                  f"Angle: {np.degrees(self.state[2]):.1f}°, "
+                  f"Distance to goal: {distance:.2f}")
 
         return None
 
     def close(self):
         """Clean up resources."""
-        pass
+        if self.renderer is not None:
+            self.renderer.close()

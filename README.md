@@ -99,7 +99,8 @@ python examples/test_environment.py
 RL-Boat/
 ├── envs/
 │   ├── __init__.py
-│   └── boat_env.py          # Main Gym environment implementation
+│   ├── boat_env.py          # Main Gym environment implementation
+│   └── renderer.py          # Matplotlib visualization renderer
 ├── examples/
 │   └── test_environment.py  # Example usage and testing
 ├── requirements.txt         # Project dependencies
@@ -136,13 +137,29 @@ The `BoatEnv` implements a Gymnasium-compatible environment with the following s
 - Out of bounds
 - Maximum steps exceeded (default: 500)
 
-## Usage Example
+## Visualization
+
+The environment includes a real-time 2D visualization using matplotlib:
+
+**Visual Elements:**
+- **Red square**: The rowing boat
+- **Dark red arrow**: Boat orientation/heading
+- **Green circle**: Goal area
+- **Green star**: Goal center point
+- **Blue line**: Boat's trajectory path
+- **Info displays**: Distance to goal and step count
+
+The visualization updates automatically during episode execution and displays in a separate window.
+
+## Usage Examples
+
+### Basic Usage (No Visualization)
 
 ```python
 from envs.boat_env import BoatEnv
 import numpy as np
 
-# Create environment
+# Create environment without visualization
 env = BoatEnv(goal_position=np.array([20.0, 20.0]))
 
 # Reset environment
@@ -152,6 +169,30 @@ state, info = env.reset()
 done = False
 while not done:
     action = env.action_space.sample()  # Random action
+    state, reward, terminated, truncated, info = env.step(action)
+    done = terminated or truncated
+
+env.close()
+```
+
+### With Real-Time Visualization
+
+```python
+from envs.boat_env import BoatEnv
+import numpy as np
+
+# Create environment WITH visualization
+env = BoatEnv(
+    goal_position=np.array([20.0, 20.0]),
+    render_mode='human'  # Enable visualization
+)
+
+# Reset and run - visualization appears automatically
+state, info = env.reset()
+
+done = False
+while not done:
+    action = env.action_space.sample()
     state, reward, terminated, truncated, info = env.step(action)
     done = terminated or truncated
 
