@@ -65,3 +65,95 @@ Additional methods may be explored to validate theoretical expectations regardin
 - Implement OpenAI Gym environment for visualization
 - Test algorithms in varied environments (obstacles, currents)
 - Extended comparative analysis across multiple methods and metrics
+
+## Installation and Setup
+
+### Prerequisites
+- Python 3.8 or higher
+- pip package manager
+
+### Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/BenKnoebel/RL-Boat.git
+cd RL-Boat
+```
+
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+### Testing the Environment
+
+Run the test script to verify the environment is working correctly:
+
+```bash
+python examples/test_environment.py
+```
+
+## Project Structure
+
+```
+RL-Boat/
+├── envs/
+│   ├── __init__.py
+│   └── boat_env.py          # Main Gym environment implementation
+├── examples/
+│   └── test_environment.py  # Example usage and testing
+├── requirements.txt         # Project dependencies
+└── README.md
+```
+
+## Environment Details
+
+The `BoatEnv` implements a Gymnasium-compatible environment with the following specifications:
+
+**State Vector (5 dimensions):**
+- `x, y`: Position coordinates in 2D plane
+- `angle`: Boat orientation in radians
+- `velocity_x, velocity_y`: Linear velocities
+
+**Actions (9 discrete options):**
+- 0: Both rudders idle
+- 1: Left forward, Right idle
+- 2: Left backward, Right idle
+- 3: Left idle, Right forward
+- 4: Left idle, Right backward
+- 5: Both forward
+- 6: Both backward
+- 7: Left forward, Right backward (rotate right)
+- 8: Left backward, Right forward (rotate left)
+
+**Rewards:**
+- `-1` per timestep (encourage efficiency)
+- `+100` when goal is reached
+- `-10` if boat goes out of bounds
+
+**Episode Termination:**
+- Goal reached (within goal radius)
+- Out of bounds
+- Maximum steps exceeded (default: 500)
+
+## Usage Example
+
+```python
+from envs.boat_env import BoatEnv
+import numpy as np
+
+# Create environment
+env = BoatEnv(goal_position=np.array([20.0, 20.0]))
+
+# Reset environment
+state, info = env.reset()
+
+# Run episode
+done = False
+while not done:
+    action = env.action_space.sample()  # Random action
+    state, reward, terminated, truncated, info = env.step(action)
+    done = terminated or truncated
+
+env.close()
+```
