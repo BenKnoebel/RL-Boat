@@ -44,6 +44,8 @@ class BoatEnv(gym.Env):
 
     def __init__(self,
                  goal_position=None,
+                 width = 1,
+                 length = 2.5, 
                  goal_radius=1.0,
                  max_steps=500,
                  bounds=50.0,
@@ -51,6 +53,7 @@ class BoatEnv(gym.Env):
                  rudder_force=5.0,
                  lever_arm=1.0,
                  friction_coeff=0.1,
+                 angular_drag_coeff=0.5,
                  dt=0.1,
                  render_mode=None):
         """
@@ -65,6 +68,7 @@ class BoatEnv(gym.Env):
             rudder_force: Force applied by each rudder when rowing (N)
             lever_arm: Distance from boat center to rudder (m)
             friction_coeff: Linear friction coefficient
+            angular_drag_coeff: Rotational drag coefficient (resists turning)
             dt: Time step for simulation (seconds)
             render_mode: Mode for rendering ('human' for visualization, None for no rendering)
         """
@@ -83,10 +87,11 @@ class BoatEnv(gym.Env):
         self.rudder_force = rudder_force
         self.lever_arm = lever_arm
         self.friction_coeff = friction_coeff
+        self.angular_drag_coeff = angular_drag_coeff
         self.dt = dt
 
         # Moment of inertia (approximated as a rectangular boat)
-        self.moment_of_inertia = boat_mass * (lever_arm ** 2)
+        self.moment_of_inertia = 1/12 * boat_mass * (self.length**2 + self.width**2)
 
         # Action space: 9 discrete actions (3^2 combinations)
         self.action_space = spaces.Discrete(9)
