@@ -46,6 +46,8 @@ We aim to implement and compare two families of reinforcement learning algorithm
 
 2. **Generalized Value Iteration (GVI) with Function Approximation**
    - Deep Q-Network (DQN)
+  
+3. As a strech goal, we will try to look into Policy Gradient Methods
 
 Additional methods may be explored to validate theoretical expectations regarding stability and performance.
 
@@ -62,7 +64,6 @@ Additional methods may be explored to validate theoretical expectations regardin
 - Stability and convergence behavior
 
 **Stretch Goals:**
-- Implement OpenAI Gym environment for visualization
 - Test algorithms in varied environments (obstacles, currents)
 - Extended comparative analysis across multiple methods and metrics
 
@@ -112,14 +113,15 @@ RL-Boat/
 └── README.md
 ```
 
-## Environment Details
+## Environment Details 
 
 The `BoatEnv` implements a Gymnasium-compatible environment with the following specifications:
 
-**State Vector (5 dimensions):**
-- `x, y`: Position coordinates in 2D plane
-- `angle`: Boat orientation in radians
-- `velocity_x, velocity_y`: Linear velocities
+**State Vector (6 dimensions):**
+- `x, y`: Position coordinates in 2D plane (meters)
+- `angle`: Boat orientation in radians (θ)
+- `velocity_x, velocity_y`: Linear velocities in global frame (m/s)
+- `angular_velocity`: Angular velocity (ω, radians/second)
 
 **Actions (9 discrete options):**
 - 0: Both rudders idle
@@ -141,6 +143,19 @@ The `BoatEnv` implements a Gymnasium-compatible environment with the following s
 - Goal reached (within goal radius)
 - Out of bounds
 - Maximum steps exceeded (default: 500)
+
+**Dynamics:**
+The boat dynamics are simulated using physics-based equations:
+- **Angular dynamics**: Torque from differential rudder forces creates angular acceleration (τ = I·α)
+- **Linear dynamics**: Net thrust from both rudders in boat's forward direction
+- **Friction**: Applied to both linear and angular velocities
+- **Integration**: Euler integration with configurable time step (default: 0.1s)
+
+The state evolves according to:
+- Position: `x(t+dt) = x(t) + vx·dt`, `y(t+dt) = y(t) + vy·dt`
+- Angle: `θ(t+dt) = θ(t) + ω·dt`
+- Linear velocity: `v(t+dt) = v(t) + a·dt` (with friction)
+- Angular velocity: `ω(t+dt) = ω(t) + α·dt` (with friction)
 
 ## Visualization
 

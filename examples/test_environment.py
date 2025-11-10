@@ -83,7 +83,8 @@ def test_random_agent(num_episodes=5, render=True, visualize=True):
                 print(f"\nStep {step}: Action {action} ({action_names[action]})")
                 print(f"  Position: ({state[0]:.2f}, {state[1]:.2f})")
                 print(f"  Angle: {np.degrees(state[2]):.1f}°")
-                print(f"  Velocity: ({state[3]:.2f}, {state[4]:.2f})")
+                print(f"  Linear velocity: ({state[3]:.2f}, {state[4]:.2f}) m/s")
+                print(f"  Angular velocity: {np.degrees(state[5]):.2f}°/s")
                 print(f"  Distance to goal: {info['distance_to_goal']:.2f}")
                 print(f"  Reward: {reward:.2f}")
 
@@ -129,30 +130,36 @@ def test_specific_actions(visualize=False):
     # Test 2: Rotation with differential rudders
     print("\nTest 2: Left forward, Right backward (action 7) for 10 steps")
     state, _ = env.reset()
-    print(f"Initial angle: {np.degrees(state[2]):.1f}°")
+    print(f"Initial angle: {np.degrees(state[2]):.1f}°, omega: {np.degrees(state[5]):.2f}°/s")
 
     for _ in range(10):
         state, _, _, _, _ = env.step(7)  # Rotate right
 
-    print(f"Final angle: {np.degrees(state[2]):.1f}°")
-    print(f"Expected: Boat should rotate (angle should change)")
+    print(f"Final angle: {np.degrees(state[2]):.1f}°, omega: {np.degrees(state[5]):.2f}°/s")
+    print(f"Expected: Boat should rotate (angle should change and angular velocity should build up)")
 
-    # Test 3: Idle action
-    print("\nTest 3: Both idle (action 0) for 10 steps")
+    # Test 3: Idle action with friction
+    print("\nTest 3: Both idle (action 0) for 10 steps - testing friction")
     state, _ = env.reset()
-    # First give it some velocity
+    # First give it some velocity (both linear and angular)
     for _ in range(5):
-        state, _, _, _, _ = env.step(5)
+        state, _, _, _, _ = env.step(5)  # Forward
+    for _ in range(3):
+        state, _, _, _, _ = env.step(7)  # Rotate
 
-    initial_velocity = np.linalg.norm(state[3:5])
-    print(f"Velocity after acceleration: {initial_velocity:.2f}")
+    initial_linear_vel = np.linalg.norm(state[3:5])
+    initial_angular_vel = abs(state[5])
+    print(f"Linear velocity after acceleration: {initial_linear_vel:.2f} m/s")
+    print(f"Angular velocity after acceleration: {np.degrees(initial_angular_vel):.2f}°/s")
 
     for _ in range(10):
         state, _, _, _, _ = env.step(0)  # Idle
 
-    final_velocity = np.linalg.norm(state[3:5])
-    print(f"Velocity after idling: {final_velocity:.2f}")
-    print(f"Expected: Velocity should decrease due to friction")
+    final_linear_vel = np.linalg.norm(state[3:5])
+    final_angular_vel = abs(state[5])
+    print(f"Linear velocity after idling: {final_linear_vel:.2f} m/s")
+    print(f"Angular velocity after idling: {np.degrees(final_angular_vel):.2f}°/s")
+    print(f"Expected: Both velocities should decrease due to friction")
 
     print("=" * 60)
     env.close()

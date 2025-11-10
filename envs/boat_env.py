@@ -28,10 +28,11 @@ class BoatEnv(gym.Env):
         - 8: Left backward, Right forward (rotate left)
 
     State Space:
-        Box(5): [x, y, angle, velocity_x, velocity_y]
+        Box(6): [x, y, angle, velocity_x, velocity_y, angular_velocity]
         - x, y: Position in 2D plane
         - angle: Boat orientation (radians)
-        - velocity_x, velocity_y: Linear velocities
+        - velocity_x, velocity_y: Linear velocities in global frame
+        - angular_velocity: Angular velocity (radians/second)
 
     Rewards:
         - Constant negative reward (-1) at each timestep
@@ -93,11 +94,11 @@ class BoatEnv(gym.Env):
         # Action space: 9 discrete actions (3^2 combinations)
         self.action_space = spaces.Discrete(9)
 
-        # State space: [x, y, angle, velocity_x, velocity_y]
+        # State space: [x, y, angle, velocity_x, velocity_y, angular_velocity]
         # Using large but bounded continuous space
         self.observation_space = spaces.Box(
-            low=np.array([-bounds, -bounds, -np.pi, -10.0, -10.0]),
-            high=np.array([bounds, bounds, np.pi, 10.0, 10.0]),
+            low=np.array([-bounds, -bounds, -np.pi, -10.0, -10.0, -2*np.pi]),
+            high=np.array([bounds, bounds, np.pi, 10.0, 10.0, 2*np.pi]),
             dtype=np.float32
         )
 
@@ -139,8 +140,8 @@ class BoatEnv(gym.Env):
         start_y = self.np_random.uniform(-5, 5)
         start_angle = self.np_random.uniform(-np.pi, np.pi)
 
-        # Initialize with zero velocity
-        self.state = np.array([start_x, start_y, start_angle, 0.0, 0.0], dtype=np.float32)
+        # Initialize with zero velocities (linear and angular)
+        self.state = np.array([start_x, start_y, start_angle, 0.0, 0.0, 0.0], dtype=np.float32)
 
         # Set random goal if not specified
         if self.goal_position is None:
@@ -219,11 +220,16 @@ class BoatEnv(gym.Env):
         """
         Apply boat dynamics based on rudder actions.
 
+        Uses proper physics integration:
+        - Angular dynamics: torque from differential rudder forces
+        - Linear dynamics: thrust from rudder forces in boat's forward direction
+        - Friction: opposes both linear and angular motion
+
         Args:
             left_action: -1 (backward), 0 (idle), or 1 (forward)
             right_action: -1 (backward), 0 (idle), or 1 (forward)
         """
-        x, y, angle, vx, vy = self.state
+        x, y, angle, vx, vy, omega = self.state
 
         # Calculate forces from rudders
         left_force = left_action * self.rudder_force
@@ -233,28 +239,37 @@ class BoatEnv(gym.Env):
         net_force = left_force + right_force
 
         # Torque from differential forces (positive = counterclockwise)
+        # Each rudder is at distance lever_arm from the center
         torque = (left_force - right_force) * self.lever_arm
 
-        # Angular acceleration and update
+        # Angular dynamics: τ = I * α
         angular_acceleration = torque / self.moment_of_inertia
-        angular_velocity = angular_acceleration * self.dt
-        angle += angular_velocity
+
+        # Apply angular friction (proportional to angular velocity)
+        angular_friction = -self.friction_coeff * omega
+        angular_acceleration += angular_friction / self.moment_of_inertia
+
+        # Update angular velocity: ω(t+dt) = ω(t) + α * dt
+        omega += angular_acceleration * self.dt
+
+        # Update angle: θ(t+dt) = θ(t) + ω * dt
+        angle += omega * self.dt
 
         # Normalize angle to [-pi, pi]
         angle = ((angle + np.pi) % (2 * np.pi)) - np.pi
 
-        # Linear acceleration in boat's frame (forward direction)
+        # Linear acceleration in boat's local frame (forward direction)
         forward_acceleration = net_force / self.boat_mass
 
         # Convert to global frame
         ax_global = forward_acceleration * np.cos(angle)
         ay_global = forward_acceleration * np.sin(angle)
 
-        # Apply friction (opposes motion)
+        # Apply linear friction (opposes motion)
         ax_global -= self.friction_coeff * vx
         ay_global -= self.friction_coeff * vy
 
-        # Update velocities
+        # Update linear velocities
         vx += ax_global * self.dt
         vy += ay_global * self.dt
 
@@ -262,8 +277,8 @@ class BoatEnv(gym.Env):
         x += vx * self.dt
         y += vy * self.dt
 
-        # Update state
-        self.state = np.array([x, y, angle, vx, vy], dtype=np.float32)
+        # Update state with all 6 components
+        self.state = np.array([x, y, angle, vx, vy, omega], dtype=np.float32)
 
     def _distance_to_goal(self):
         """Calculate Euclidean distance to goal."""
@@ -290,6 +305,7 @@ class BoatEnv(gym.Env):
             distance = self._distance_to_goal()
             print(f"Position: ({self.state[0]:.2f}, {self.state[1]:.2f}), "
                   f"Angle: {np.degrees(self.state[2]):.1f}°, "
+                  f"Angular velocity: {np.degrees(self.state[5]):.2f}°/s, "
                   f"Distance to goal: {distance:.2f}")
 
         return None

@@ -39,6 +39,7 @@ class BoatRenderer:
         self.trajectory_line = None
         self.distance_text = None
         self.step_text = None
+        self.velocity_text = None
 
         # Trajectory tracking
         self.trajectory_x = []
@@ -127,6 +128,15 @@ class BoatRenderer:
             fontsize=9
         )
 
+        self.velocity_text = self.ax.text(
+            0.02, 0.82,
+            '',
+            transform=self.ax.transAxes,
+            verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.5),
+            fontsize=9
+        )
+
         # Add legend
         self.ax.legend(loc='upper right', fontsize=8)
 
@@ -141,7 +151,7 @@ class BoatRenderer:
         Update the visualization with the current state.
 
         Args:
-            state: Current state [x, y, angle, vx, vy]
+            state: Current state [x, y, angle, vx, vy, omega]
             goal_position: Position of the goal
             goal_radius: Radius of the goal
             distance: Current distance to goal
@@ -150,7 +160,7 @@ class BoatRenderer:
         if not self.initialized:
             self.initialize(goal_position, goal_radius)
 
-        x, y, angle, vx, vy = state
+        x, y, angle, vx, vy, omega = state
 
         # Update boat position (center the square on the boat position)
         boat_size = 1.5
@@ -184,6 +194,13 @@ class BoatRenderer:
         # Update text displays
         self.distance_text.set_text(f'Distance to Goal: {distance:.2f} m')
         self.step_text.set_text(f'Step: {step}')
+
+        # Calculate speed for display
+        linear_speed = np.sqrt(vx**2 + vy**2)
+        self.velocity_text.set_text(
+            f'Speed: {linear_speed:.2f} m/s\n'
+            f'ω: {np.degrees(omega):.1f}°/s'
+        )
 
         # Redraw
         self.fig.canvas.draw()

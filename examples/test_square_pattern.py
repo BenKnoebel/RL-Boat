@@ -60,6 +60,7 @@ def test_square_pattern():
     state, info = env.reset()
     print(f"Starting Position: ({state[0]:.2f}, {state[1]:.2f})")
     print(f"Starting Angle: {np.degrees(state[2]):.1f}°")
+    print(f"Starting Angular Velocity: {np.degrees(state[5]):.2f}°/s")
     print()
 
     # Simulation parameters
@@ -93,6 +94,8 @@ def test_square_pattern():
         print(f"  Traveled {distance_traveled:.2f} meters")
         print(f"  Current position: ({state[0]:.2f}, {state[1]:.2f})")
         print(f"  Current angle: {np.degrees(state[2]):.1f}°")
+        print(f"  Linear velocity: ({state[3]:.2f}, {state[4]:.2f}) m/s")
+        print(f"  Angular velocity: {np.degrees(state[5]):.2f}°/s")
 
         # Rotate 90 degrees to the left (if not on the last side)
         if side < 3:
@@ -124,6 +127,7 @@ def test_square_pattern():
 
             print(f"  Rotation complete after {rotation_steps} steps")
             print(f"  New angle: {np.degrees(state[2]):.1f}°")
+            print(f"  Angular velocity: {np.degrees(state[5]):.2f}°/s")
 
         print()
 
@@ -132,6 +136,8 @@ def test_square_pattern():
     print("=" * 70)
     print(f"Final Position: ({state[0]:.2f}, {state[1]:.2f})")
     print(f"Final Angle: {np.degrees(state[2]):.1f}°")
+    print(f"Final Linear Velocity: ({state[3]:.2f}, {state[4]:.2f}) m/s")
+    print(f"Final Angular Velocity: {np.degrees(state[5]):.2f}°/s")
     print()
     print("The boat should have traced approximately a square pattern.")
     print("Check the visualization window to see the blue trajectory line.")
