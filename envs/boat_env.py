@@ -49,9 +49,9 @@ class BoatEnv(gym.Env):
                  goal_radius=1.0,
                  max_steps=500,
                  bounds=50.0,
-                 boat_mass=10.0,
-                 rudder_force=5.0,
-                 lever_arm=1.0,
+                 boat_mass=120.0,
+                 rudder_force=80.0,
+                 lever_arm=0.15,
                  friction_coeff=0.1,
                  angular_drag_coeff=0.5,
                  dt=0.1,
@@ -89,6 +89,12 @@ class BoatEnv(gym.Env):
         self.friction_coeff = friction_coeff
         self.angular_drag_coeff = angular_drag_coeff
         self.dt = dt
+        self.length = length
+        self.width = width
+
+
+        ## IMPORTANT NOTE: DYNAMICS ARE STILL WORK IN PROGRESS AND ARE NOT BE PHYSICALLY ACCURATE ##
+
 
         # Moment of inertia (approximated as a rectangular boat)
         self.moment_of_inertia = 1/12 * boat_mass * (self.length**2 + self.width**2)
@@ -248,7 +254,7 @@ class BoatEnv(gym.Env):
         angular_acceleration = torque / self.moment_of_inertia
 
         # Apply angular friction (proportional to angular velocity)
-        angular_friction = -self.friction_coeff * omega
+        angular_friction = -self.angular_drag_coeff * (omega**2)
         angular_acceleration += angular_friction / self.moment_of_inertia
 
         # Update angular velocity: ω(t+dt) = ω(t) + α * dt
