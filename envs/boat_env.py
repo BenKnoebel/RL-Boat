@@ -44,6 +44,8 @@ class BoatEnv(gym.Env):
 
     def __init__(self,
                  goal_position=None,
+                 width = 1,
+                 length = 2.5, 
                  goal_radius=1.0,
                  max_steps=500,
                  bounds=50.0,
@@ -89,7 +91,7 @@ class BoatEnv(gym.Env):
         self.dt = dt
 
         # Moment of inertia (approximated as a rectangular boat)
-        self.moment_of_inertia = boat_mass * (lever_arm ** 2)
+        self.moment_of_inertia = 1/12 * boat_mass * (self.length**2 + self.width**2)
 
         # Action space: 9 discrete actions (3^2 combinations)
         self.action_space = spaces.Discrete(9)
