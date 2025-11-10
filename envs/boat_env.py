@@ -49,7 +49,7 @@ class BoatEnv(gym.Env):
                  bounds=50.0,
                  boat_mass=10.0,
                  rudder_force=5.0,
-                 lever_arm=0.1,
+                 lever_arm=1.0,
                  friction_coeff=0.1,
                  dt=0.1,
                  render_mode=None):

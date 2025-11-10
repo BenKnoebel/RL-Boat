@@ -70,7 +70,7 @@ def test_square_pattern():
 
     # Action definitions
     ACTION_BOTH_FORWARD = 5  # Both rudders forward
-    ACTION_ROTATE_LEFT = 7   # Left backward, Right forward
+    ACTION_ROTATE_LEFT = 8   # Left backward, Right forward
 
     # Complete 4 sides of the square
     for side in range(4):
