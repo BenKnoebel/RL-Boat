@@ -50,6 +50,7 @@ class BoatEnv(gym.Env):
                  rudder_force=5.0,
                  lever_arm=1.0,
                  friction_coeff=0.1,
+                 angular_drag_coeff=0.5,
                  dt=0.1,
                  render_mode=None):
         """
@@ -64,6 +65,7 @@ class BoatEnv(gym.Env):
             rudder_force: Force applied by each rudder when rowing (N)
             lever_arm: Distance from boat center to rudder (m)
             friction_coeff: Linear friction coefficient
+            angular_drag_coeff: Rotational drag coefficient (resists turning)
             dt: Time step for simulation (seconds)
             render_mode: Mode for rendering ('human' for visualization, None for no rendering)
         """
@@ -82,6 +84,7 @@ class BoatEnv(gym.Env):
         self.rudder_force = rudder_force
         self.lever_arm = lever_arm
         self.friction_coeff = friction_coeff
+        self.angular_drag_coeff = angular_drag_coeff
         self.dt = dt
 
         # Moment of inertia (approximated as a rectangular boat)
