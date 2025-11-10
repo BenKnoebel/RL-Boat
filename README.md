@@ -46,6 +46,8 @@ We aim to implement and compare two families of reinforcement learning algorithm
 
 2. **Generalized Value Iteration (GVI) with Function Approximation**
    - Deep Q-Network (DQN)
+  
+3. As a strech goal, we will try to look into Policy Gradient Methods
 
 Additional methods may be explored to validate theoretical expectations regarding stability and performance.
 
@@ -62,7 +64,6 @@ Additional methods may be explored to validate theoretical expectations regardin
 - Stability and convergence behavior
 
 **Stretch Goals:**
-- Implement OpenAI Gym environment for visualization
 - Test algorithms in varied environments (obstacles, currents)
 - Extended comparative analysis across multiple methods and metrics
 
@@ -112,7 +113,7 @@ RL-Boat/
 └── README.md
 ```
 
-## Environment Details
+## Environment Details 
 
 The `BoatEnv` implements a Gymnasium-compatible environment with the following specifications:
 
