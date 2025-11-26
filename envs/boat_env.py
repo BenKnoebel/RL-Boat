@@ -51,9 +51,9 @@ class BoatEnv(gym.Env):
                  bounds=50.0,
                  boat_mass=120.0,
                  rudder_force=80.0,
-                 lever_arm=0.15,
-                 friction_coeff=0.1,
-                 angular_drag_coeff=0.5,
+                 lever_arm=0.015,
+                 friction_coeff=0.2,
+                 angular_drag_coeff=0.8,
                  dt=0.1,
                  render_mode=None):
         """
@@ -61,14 +61,16 @@ class BoatEnv(gym.Env):
 
         Args:
             goal_position: Target position [x, y]. If None, random goal is set.
-            goal_radius: Distance threshold to consider goal reached
+            width: Width of the boat (m)
+            length: Length of the boat (m)
+            goal_radius: Distance threshold to consider goal reached (m)
             max_steps: Maximum steps per episode
-            bounds: Size of the environment (square from -bounds to +bounds)
+            bounds: Size of the environment (square from -bounds to +bounds) (m)
             boat_mass: Mass of the boat (kg)
             rudder_force: Force applied by each rudder when rowing (N)
             lever_arm: Distance from boat center to rudder (m)
-            friction_coeff: Linear friction coefficient
-            angular_drag_coeff: Rotational drag coefficient (resists turning)
+            friction_coeff: Linear drag coefficient (N·s/m or kg/s)
+            angular_drag_coeff: Angular drag coefficient (N·m·s or kg·m²/s)
             dt: Time step for simulation (seconds)
             render_mode: Mode for rendering ('human' for visualization, None for no rendering)
         """
@@ -92,12 +94,9 @@ class BoatEnv(gym.Env):
         self.length = length
         self.width = width
 
-
-        ## IMPORTANT NOTE: DYNAMICS ARE STILL WORK IN PROGRESS AND ARE NOT BE PHYSICALLY ACCURATE ##
-
-
-        # Moment of inertia (approximated as a rectangular boat)
-        self.moment_of_inertia = 1/12 * boat_mass * (self.length**2 + self.width**2)
+        # Moment of inertia (approximated as a rectangular plate)
+        # For a rectangular plate rotating about its center: I = (1/12) * m * (L² + W²)
+        self.moment_of_inertia = (1.0/12.0) * boat_mass * (self.length**2 + self.width**2)
 
         # Action space: 9 discrete actions (3^2 combinations)
         self.action_space = spaces.Discrete(9)
@@ -231,7 +230,12 @@ class BoatEnv(gym.Env):
         Uses proper physics integration:
         - Angular dynamics: torque from differential rudder forces
         - Linear dynamics: thrust from rudder forces in boat's forward direction
-        - Friction: opposes both linear and angular motion
+        - Friction/Drag: Linear damping opposes both linear and angular motion
+
+        Physics:
+        - Angular: τ = I·α, with damping torque τ_drag = -c_angular·ω
+        - Linear: F = m·a, with drag force F_drag = -c_linear·v
+        - Integration: Euler method with time step dt
 
         Args:
             left_action: -1 (backward), 0 (idle), or 1 (forward)
@@ -239,23 +243,22 @@ class BoatEnv(gym.Env):
         """
         x, y, angle, vx, vy, omega = self.state
 
+        # ==================== ANGULAR DYNAMICS ====================
         # Calculate forces from rudders
         left_force = left_action * self.rudder_force
         right_force = right_action * self.rudder_force
-
-        # Net force in boat's forward direction
-        net_force = left_force + right_force
 
         # Torque from differential forces (positive = counterclockwise)
         # Each rudder is at distance lever_arm from the center
         torque = (left_force - right_force) * self.lever_arm
 
-        # Angular dynamics: τ = I * α
-        angular_acceleration = torque / self.moment_of_inertia
+        # Angular drag torque (opposes rotation, linear in omega)
+        # This provides constant angular deceleration when idle
+        drag_torque = -self.angular_drag_coeff * omega
 
-        # Apply angular friction (proportional to angular velocity)
-        angular_friction = -self.angular_drag_coeff * (omega**2)
-        angular_acceleration += angular_friction / self.moment_of_inertia
+        # Total torque and angular acceleration: τ_total = I * α
+        total_torque = torque + drag_torque
+        angular_acceleration = total_torque / self.moment_of_inertia
 
         # Update angular velocity: ω(t+dt) = ω(t) + α * dt
         omega += angular_acceleration * self.dt
@@ -266,22 +269,29 @@ class BoatEnv(gym.Env):
         # Normalize angle to [-pi, pi]
         angle = ((angle + np.pi) % (2 * np.pi)) - np.pi
 
+        # ==================== LINEAR DYNAMICS ====================
+        # Net force in boat's forward direction (local frame)
+        net_force = left_force + right_force
+
         # Linear acceleration in boat's local frame (forward direction)
-        forward_acceleration = net_force / self.boat_mass
-
         # Convert to global frame
-        ax_global = forward_acceleration * np.cos(angle)
-        ay_global = forward_acceleration * np.sin(angle)
+        thrust_ax = (net_force / self.boat_mass) * np.cos(angle)
+        thrust_ay = (net_force / self.boat_mass) * np.sin(angle)
 
-        # Apply linear friction (opposes motion)
-        ax_global -= self.friction_coeff * vx
-        ay_global -= self.friction_coeff * vy
+        # Linear drag force (opposes motion, linear in velocity)
+        # F_drag = -c * v  =>  a_drag = -c/m * v
+        drag_ax = -self.friction_coeff * vx
+        drag_ay = -self.friction_coeff * vy
 
-        # Update linear velocities
+        # Total acceleration
+        ax_global = thrust_ax + drag_ax
+        ay_global = thrust_ay + drag_ay
+
+        # Update linear velocities: v(t+dt) = v(t) + a * dt
         vx += ax_global * self.dt
         vy += ay_global * self.dt
 
-        # Update positions
+        # Update positions: x(t+dt) = x(t) + v * dt
         x += vx * self.dt
         y += vy * self.dt
 

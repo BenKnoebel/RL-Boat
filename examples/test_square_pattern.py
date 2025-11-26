@@ -71,6 +71,7 @@ def test_square_pattern():
     # Action definitions
     ACTION_BOTH_FORWARD = 5  # Both rudders forward
     ACTION_ROTATE_LEFT = 8   # Left backward, Right forward
+    ACTION_ROTATE_RIGHT = 7  # Left forward, Right backward
 
     # Complete 4 sides of the square
     for side in range(4):
@@ -124,6 +125,9 @@ def test_square_pattern():
                 if terminated or truncated:
                     print("Episode ended early!")
                     break
+
+            for _ in range(20):
+                state, reward, terminated, truncated, info = env.step(ACTION_ROTATE_RIGHT)  # Idle to stabilize
 
             print(f"  Rotation complete after {rotation_steps} steps")
             print(f"  New angle: {np.degrees(state[2]):.1f}°")

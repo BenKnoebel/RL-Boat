@@ -121,7 +121,7 @@ def test_specific_actions(visualize=False):
     state, _ = env.reset()
     print(f"Initial state: {state}")
 
-    for _ in range(10):
+    for _ in range(30):
         state, _, _, _, _ = env.step(5)  # Both forward
 
     print(f"Final state: {state}")
@@ -132,7 +132,7 @@ def test_specific_actions(visualize=False):
     state, _ = env.reset()
     print(f"Initial angle: {np.degrees(state[2]):.1f}°, omega: {np.degrees(state[5]):.2f}°/s")
 
-    for _ in range(10):
+    for _ in range(30):
         state, _, _, _, _ = env.step(7)  # Rotate right
 
     print(f"Final angle: {np.degrees(state[2]):.1f}°, omega: {np.degrees(state[5]):.2f}°/s")
@@ -142,9 +142,9 @@ def test_specific_actions(visualize=False):
     print("\nTest 3: Both idle (action 0) for 10 steps - testing friction")
     state, _ = env.reset()
     # First give it some velocity (both linear and angular)
-    for _ in range(5):
+    for _ in range(20):
         state, _, _, _, _ = env.step(5)  # Forward
-    for _ in range(3):
+    for _ in range(30):
         state, _, _, _, _ = env.step(7)  # Rotate
 
     initial_linear_vel = np.linalg.norm(state[3:5])
@@ -152,7 +152,7 @@ def test_specific_actions(visualize=False):
     print(f"Linear velocity after acceleration: {initial_linear_vel:.2f} m/s")
     print(f"Angular velocity after acceleration: {np.degrees(initial_angular_vel):.2f}°/s")
 
-    for _ in range(10):
+    for _ in range(100):
         state, _, _, _, _ = env.step(0)  # Idle
 
     final_linear_vel = np.linalg.norm(state[3:5])
@@ -178,7 +178,7 @@ if __name__ == "__main__":
     print()
 
     # Test with random agent WITH VISUALIZATION
-    test_random_agent(num_episodes=2, render=True, visualize=True)
+    #test_random_agent(num_episodes=2, render=True, visualize=True)
 
     # Test specific actions without visualization (faster)
-    test_specific_actions(visualize=False)
+    test_specific_actions(visualize=True)
