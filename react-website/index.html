@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RL Boat Visualization</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f8f9fa;
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #1a1a1a;
+        }
+
+        #root {
+            width: 100%;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 42px;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        .header p {
+            font-size: 16px;
+            color: #6b7280;
+            font-weight: 400;
+        }
+
+        .main-container {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 24px;
+            align-items: start;
+        }
+
+        .canvas-section {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        .canvas-container {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #fafafa;
+            border: 1px solid #e5e7eb;
+        }
+
+        canvas {
+            display: block;
+            max-width: 100%;
+            height: auto;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 16px;
+            letter-spacing: -0.3px;
+        }
+
+        .upload-section {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .btn-primary {
+            background: #1a1a1a;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #333;
+            transform: translateY(-1px);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: #f3f4f6;
+            color: #1a1a1a;
+            border: 1px solid #e5e7eb;
+        }
+
+        .btn-secondary:hover {
+            background: #e5e7eb;
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .stat-item {
+            background: #f9fafb;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            font-weight: 500;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1a1a1a;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .control-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        .control-btn {
+            background: white;
+            color: #1a1a1a;
+            border: 1.5px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 16px 8px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 13px;
+            transition: all 0.15s ease;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .control-btn:hover {
+            background: #f9fafb;
+            border-color: #1a1a1a;
+        }
+
+        .control-btn:active {
+            transform: scale(0.97);
+        }
+
+        .control-btn.empty {
+            background: transparent;
+            border: none;
+            cursor: default;
+        }
+
+        .divider {
+            height: 1px;
+            background: #e5e7eb;
+            margin: 20px 0;
+        }
+
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: #f9fafb;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .toggle-label {
+            font-size: 14px;
+            font-weight: 500;
+            color: #1a1a1a;
+        }
+
+        .switch {
+            position: relative;
+            width: 48px;
+            height: 24px;
+            background: #d1d5db;
+            border-radius: 24px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .switch.active {
+            background: #10b981;
+        }
+
+        .switch-handle {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.2s;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+        }
+
+        .switch.active .switch-handle {
+            transform: translateX(24px);
+        }
+
+        @media (max-width: 1024px) {
+            .main-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .canvas-controls {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: #f3f4f6;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #374151;
+        }
+
+        .badge-success {
+            background: #d1fae5;
+            border-color: #a7f3d0;
+            color: #065f46;
+        }
+
+        .instructions {
+            background: #fefce8;
+            border: 1px solid #fde047;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 20px;
+        }
+
+        .instructions-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #854d0e;
+            margin-bottom: 8px;
+        }
+
+        .instructions-list {
+            list-style: none;
+            font-size: 13px;
+            color: #a16207;
+            line-height: 1.6;
+        }
+
+        .instructions-list li {
+            padding-left: 20px;
+            position: relative;
+        }
+
+        .instructions-list li:before {
+            content: "•";
+            position: absolute;
+            left: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <!-- React and ReactDOM from CDN -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+    <!-- Babel Standalone for JSX transformation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Boat Visualization App -->
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        function BoatVisualization() {
+            const canvasRef = useRef(null);
+            const fileInputRef = useRef(null);
+
+            // Canvas dimensions
+            const CANVAS_WIDTH = 1000;
+            const CANVAS_HEIGHT = 1000;
+            const BOAT_LENGTH = 10;
+
+            // Boat state
+            const [boatState, setBoatState] = useState({
+                x: 500,
+                y: 500,
+                angle: 0,
+                vx: 0,
+                vy: 0,
+                omega: 0
+            });
+
+            const [backgroundImage, setBackgroundImage] = useState(null);
+            const [isSimulating, setIsSimulating] = useState(false);
+            const [fps, setFps] = useState(0);
+            const lastFrameTime = useRef(Date.now());
+
+            // Handle background image upload
+            const handleImageUpload = (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            setBackgroundImage(img);
+                        };
+                        img.src = e.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            // Draw boat on canvas
+            const drawBoat = (ctx, state) => {
+                const { x, y, angle } = state;
+
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(angle);
+
+                // Draw position marker circle
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+                ctx.beginPath();
+                ctx.arc(0, 0, 16, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Draw boat body
+                ctx.fillStyle = '#1a1a1a';
+                ctx.fillRect(-BOAT_LENGTH/2, -BOAT_LENGTH/4, BOAT_LENGTH, BOAT_LENGTH/2);
+
+                // Draw boat direction arrow
+                ctx.strokeStyle = '#1a1a1a';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(BOAT_LENGTH/2 + 4, 0);
+                ctx.stroke();
+
+                // Draw arrow head
+                ctx.fillStyle = '#1a1a1a';
+                ctx.beginPath();
+                ctx.moveTo(BOAT_LENGTH/2 + 4, 0);
+                ctx.lineTo(BOAT_LENGTH/2, -2.5);
+                ctx.lineTo(BOAT_LENGTH/2, 2.5);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.restore();
+            };
+
+            // Render function called at 30 Hz
+            const render = () => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+
+                const ctx = canvas.getContext('2d');
+
+                // Clear canvas
+                ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+                // Draw background
+                if (backgroundImage) {
+                    ctx.drawImage(backgroundImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                } else {
+                    // Clean white background with subtle grid
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+                    // Draw minimal grid
+                    ctx.strokeStyle = '#f3f4f6';
+                    ctx.lineWidth = 1;
+                    for (let i = 0; i <= CANVAS_WIDTH; i += 100) {
+                        ctx.beginPath();
+                        ctx.moveTo(i, 0);
+                        ctx.lineTo(i, CANVAS_HEIGHT);
+                        ctx.stroke();
+
+                        ctx.beginPath();
+                        ctx.moveTo(0, i);
+                        ctx.lineTo(CANVAS_WIDTH, i);
+                        ctx.stroke();
+                    }
+
+                    // Draw center cross
+                    ctx.strokeStyle = '#e5e7eb';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([5, 5]);
+                    ctx.beginPath();
+                    ctx.moveTo(CANVAS_WIDTH/2, 0);
+                    ctx.lineTo(CANVAS_WIDTH/2, CANVAS_HEIGHT);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0, CANVAS_HEIGHT/2);
+                    ctx.lineTo(CANVAS_WIDTH, CANVAS_HEIGHT/2);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+
+                // Draw boat
+                drawBoat(ctx, boatState);
+
+                // Calculate FPS
+                const now = Date.now();
+                const delta = now - lastFrameTime.current;
+                if (delta > 0) {
+                    setFps(Math.round(1000 / delta));
+                }
+                lastFrameTime.current = now;
+            };
+
+            // Update boat physics
+            const updateBoatPhysics = (dt) => {
+                setBoatState(prev => {
+                    const friction = 0.95;
+
+                    let newX = prev.x + prev.vx * dt;
+                    let newY = prev.y + prev.vy * dt;
+                    let newAngle = prev.angle + prev.omega * dt;
+                    let newVx = prev.vx * friction;
+                    let newVy = prev.vy * friction;
+                    let newOmega = prev.omega * friction;
+
+                    // Keep boat in bounds
+                    if (newX < 0) newX = 0;
+                    if (newX > CANVAS_WIDTH) newX = CANVAS_WIDTH;
+                    if (newY < 0) newY = 0;
+                    if (newY > CANVAS_HEIGHT) newY = CANVAS_HEIGHT;
+
+                    // Normalize angle
+                    newAngle = ((newAngle + Math.PI) % (2 * Math.PI)) - Math.PI;
+
+                    return {
+                        x: newX,
+                        y: newY,
+                        angle: newAngle,
+                        vx: newVx,
+                        vy: newVy,
+                        omega: newOmega
+                    };
+                });
+            };
+
+            // Control functions
+            const moveForward = () => {
+                setBoatState(prev => ({
+                    ...prev,
+                    vx: prev.vx + Math.cos(prev.angle) * 5,
+                    vy: prev.vy + Math.sin(prev.angle) * 5
+                }));
+            };
+
+            const moveBackward = () => {
+                setBoatState(prev => ({
+                    ...prev,
+                    vx: prev.vx - Math.cos(prev.angle) * 5,
+                    vy: prev.vy - Math.sin(prev.angle) * 5
+                }));
+            };
+
+            const rotateLeft = () => {
+                setBoatState(prev => ({
+                    ...prev,
+                    omega: prev.omega + 0.05
+                }));
+            };
+
+            const rotateRight = () => {
+                setBoatState(prev => ({
+                    ...prev,
+                    omega: prev.omega - 0.05
+                }));
+            };
+
+            const stopBoat = () => {
+                setBoatState(prev => ({
+                    ...prev,
+                    vx: 0,
+                    vy: 0,
+                    omega: 0
+                }));
+            };
+
+            const resetBoat = () => {
+                setBoatState({
+                    x: 500,
+                    y: 500,
+                    angle: 0,
+                    vx: 0,
+                    vy: 0,
+                    omega: 0
+                });
+            };
+
+            // 30 Hz update loop
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    if (isSimulating) {
+                        updateBoatPhysics(1/30);
+                    }
+                    render();
+                }, 1000 / 30);
+
+                return () => clearInterval(interval);
+            }, [boatState, backgroundImage, isSimulating]);
+
+            const speed = Math.sqrt(boatState.vx**2 + boatState.vy**2);
+
+            return (
+                <>
+                    <div className="header">
+                        <h1>RL Boat Visualization</h1>
+                        <p>Real-time boat simulation at 30 Hz</p>
+                    </div>
+
+                    <div className="main-container">
+                        <div className="canvas-section">
+                            <div className="canvas-container">
+                                <canvas
+                                    ref={canvasRef}
+                                    width={CANVAS_WIDTH}
+                                    height={CANVAS_HEIGHT}
+                                />
+                            </div>
+
+                            <div className="canvas-controls">
+                                <span className="badge">1000 × 1000 px</span>
+                                <span className={`badge ${fps >= 25 ? 'badge-success' : ''}`}>
+                                    {fps} FPS
+                                </span>
+                                {backgroundImage && (
+                                    <span className="badge badge-success">Background Loaded</span>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="sidebar">
+                            <div className="card">
+                                <h3 className="card-title">Background</h3>
+                                <div className="upload-section">
+                                    <input
+                                        type="file"
+                                        ref={fileInputRef}
+                                        accept="image/*"
+                                        onChange={handleImageUpload}
+                                    />
+                                    <button
+                                        className="btn btn-primary"
+                                        onClick={() => fileInputRef.current.click()}
+                                    >
+                                        <span>📁</span>
+                                        Upload Image
+                                    </button>
+                                    {backgroundImage && (
+                                        <button
+                                            className="btn btn-secondary"
+                                            onClick={() => setBackgroundImage(null)}
+                                        >
+                                            Remove Background
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="card">
+                                <h3 className="card-title">Physics</h3>
+                                <div
+                                    className="toggle-switch"
+                                    onClick={() => setIsSimulating(!isSimulating)}
+                                >
+                                    <span className="toggle-label">Simulation</span>
+                                    <div className={`switch ${isSimulating ? 'active' : ''}`}>
+                                        <div className="switch-handle"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="card">
+                                <h3 className="card-title">Telemetry</h3>
+                                <div className="stats-grid">
+                                    <div className="stat-item">
+                                        <div className="stat-label">Position X</div>
+                                        <div className="stat-value">{Math.round(boatState.x)}</div>
+                                    </div>
+                                    <div className="stat-item">
+                                        <div className="stat-label">Position Y</div>
+                                        <div className="stat-value">{Math.round(boatState.y)}</div>
+                                    </div>
+                                    <div className="stat-item">
+                                        <div className="stat-label">Angle</div>
+                                        <div className="stat-value">{(boatState.angle * 180 / Math.PI).toFixed(1)}°</div>
+                                    </div>
+                                    <div className="stat-item">
+                                        <div className="stat-label">Speed</div>
+                                        <div className="stat-value">{speed.toFixed(1)}</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="card">
+                                <h3 className="card-title">Controls</h3>
+                                <div className="control-grid">
+                                    <div className="control-btn empty"></div>
+                                    <button className="control-btn" onClick={moveForward}>
+                                        ↑ Forward
+                                    </button>
+                                    <div className="control-btn empty"></div>
+
+                                    <button className="control-btn" onClick={rotateLeft}>
+                                        ← Left
+                                    </button>
+                                    <button className="control-btn" onClick={stopBoat}>
+                                        ■ Stop
+                                    </button>
+                                    <button className="control-btn" onClick={rotateRight}>
+                                        → Right
+                                    </button>
+
+                                    <div className="control-btn empty"></div>
+                                    <button className="control-btn" onClick={moveBackward}>
+                                        ↓ Back
+                                    </button>
+                                    <button className="control-btn" onClick={resetBoat}>
+                                        ↺ Reset
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="instructions">
+                                <div className="instructions-title">Quick Start</div>
+                                <ul className="instructions-list">
+                                    <li>Upload a map as background</li>
+                                    <li>Toggle physics simulation on/off</li>
+                                    <li>Use arrow controls to navigate</li>
+                                    <li>Monitor real-time telemetry</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </>
+            );
+        }
+
+        // Render the app
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<BoatVisualization />);
+    </script>
+</body>
+</html>
