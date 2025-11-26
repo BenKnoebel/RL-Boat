@@ -126,8 +126,6 @@ def test_square_pattern():
                     print("Episode ended early!")
                     break
 
-            for _ in range(20):
-                state, reward, terminated, truncated, info = env.step(ACTION_ROTATE_RIGHT)  # Idle to stabilize
 
             print(f"  Rotation complete after {rotation_steps} steps")
             print(f"  New angle: {np.degrees(state[2]):.1f}°")

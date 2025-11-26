@@ -52,8 +52,8 @@ class BoatEnv(gym.Env):
                  boat_mass=120.0,
                  rudder_force=80.0,
                  lever_arm=0.015,
-                 friction_coeff=0.2,
-                 angular_drag_coeff=0.8,
+                 friction_coeff=1,
+                 angular_drag_coeff=10,
                  dt=0.1,
                  render_mode=None):
         """
@@ -121,7 +121,7 @@ class BoatEnv(gym.Env):
             6: (-1, -1),  # Both backward
             7: (1, -1),   # Left forward, Right backward (rotate right)
             8: (-1, 1),   # Left backward, Right forward (rotate left)
-        }
+        }   
 
         # State variables
         self.state = None
