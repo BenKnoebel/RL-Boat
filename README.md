@@ -136,8 +136,9 @@ The `BoatEnv` implements a Gymnasium-compatible environment with the following s
 
 **Rewards:**
 - `-1` per timestep (encourage efficiency)
-- `+100` when goal is reached
-- `-10` if boat goes out of bounds
+- `+100` when goal is reached (terminates episode)
+- `-10` if boat goes out of bounds (terminates episode)
+- `-25` when boat is in a black zone/obstacle (if mask is provided, does NOT terminate)
 
 **Episode Termination:**
 - Goal reached (within goal radius)
@@ -218,3 +219,31 @@ while not done:
 
 env.close()
 ```
+
+### Advanced Features: Obstacles and Custom Goals
+
+The environment supports obstacle detection using image masks and custom goal positioning:
+
+```python
+from envs.boat_env import BoatEnv
+import numpy as np
+
+# Create environment with obstacles and custom goal
+env = BoatEnv(
+    goal_position=np.array([15.0, 15.0]),  # Custom goal location
+    mask_path='mask.png',  # Optional: PNG image for obstacles
+    render_mode='human'
+)
+
+# The mask should be a grayscale PNG where:
+# - White pixels (>= 128): navigable water
+# - Black pixels (< 128): obstacles
+# Coordinate system: bottom-left is origin (0,0), y-axis points upward
+```
+
+**Obstacle Behavior:**
+- When the boat enters a black zone, it receives a -25 reward penalty
+- The episode does NOT terminate - the boat can continue navigating
+- This allows learning to avoid obstacles without harsh termination
+
+For more details on implementing RL algorithms with this environment, see [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md).

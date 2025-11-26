@@ -2,9 +2,16 @@
 gymnasium>=0.29.0
 numpy>=1.24.0
 
-# For future RL implementations
+# RL Framework
+stable-baselines3>=2.2.0
 torch>=2.0.0
-matplotlib>=3.7.0
 
-# Optional: For visualization
+# Visualization and monitoring
+matplotlib>=3.7.0
+tensorboard>=2.15.0
+
+# Image processing for mask loading
+Pillow>=10.0.0
+
+# Optional: For rendering
 pygame>=2.5.0

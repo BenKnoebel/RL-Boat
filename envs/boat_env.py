@@ -9,6 +9,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 from envs.renderer import BoatRenderer
+from PIL import Image
 
 
 class BoatEnv(gym.Env):
@@ -36,7 +37,8 @@ class BoatEnv(gym.Env):
 
     Rewards:
         - Constant negative reward (-1) at each timestep
-        - Large positive reward when goal is reached
+        - Large positive reward (+100) when goal is reached
+        - Penalty (-25) when boat is in a black zone (obstacle)
         - Episode terminates when goal is reached or max steps exceeded
     """
 
@@ -44,8 +46,9 @@ class BoatEnv(gym.Env):
 
     def __init__(self,
                  goal_position=None,
+                 mask_path=None,
                  width = 1,
-                 length = 2.5, 
+                 length = 2.5,
                  goal_radius=1.0,
                  max_steps=500,
                  bounds=50.0,
@@ -61,6 +64,7 @@ class BoatEnv(gym.Env):
 
         Args:
             goal_position: Target position [x, y]. If None, random goal is set.
+            mask_path: Path to obstacle mask image (black=obstacles, white=navigable). If None, no obstacles.
             width: Width of the boat (m)
             length: Length of the boat (m)
             goal_radius: Distance threshold to consider goal reached (m)
@@ -79,10 +83,36 @@ class BoatEnv(gym.Env):
         self.render_mode = render_mode
 
         # Environment parameters
-        self.goal_position = np.array(goal_position) if goal_position is not None else None
         self.goal_radius = goal_radius
         self.max_steps = max_steps
         self.bounds = bounds
+        self.goal_position = None
+        self.fixed_goal = False
+
+        # Validate and set goal position if provided
+        if goal_position is not None:
+            goal_pos = np.array(goal_position)
+            # Check if within bounds
+            if abs(goal_pos[0]) > self.bounds or abs(goal_pos[1]) > self.bounds:
+                raise ValueError(f"Goal position {goal_position} is outside bounds [-{self.bounds}, {self.bounds}]")
+            self.goal_position = goal_pos
+            self.fixed_goal = True
+
+        # Load obstacle mask if provided
+        self.mask = None
+        self.mask_scale_x = None
+        self.mask_scale_y = None
+        if mask_path is not None:
+            mask_img = Image.open(mask_path).convert('L')  # Convert to grayscale
+            self.mask = np.array(mask_img)
+            # Calculate scale: map world coordinates [-bounds, bounds] to image pixels
+            # mask.shape[0] is height (y), mask.shape[1] is width (x)
+            self.mask_scale_x = self.mask.shape[1] / (2 * self.bounds)
+            self.mask_scale_y = self.mask.shape[0] / (2 * self.bounds)
+
+            # Validate that fixed goal is not in a black zone
+            if self.fixed_goal and self._is_position_in_black_zone(self.goal_position[0], self.goal_position[1]):
+                raise ValueError(f"Goal position {self.goal_position} is inside a black zone (obstacle)")
 
         # Boat physics parameters
         self.boat_mass = boat_mass
@@ -142,19 +172,37 @@ class BoatEnv(gym.Env):
         """
         super().reset(seed=seed)
 
-        # Random starting position near origin
-        start_x = self.np_random.uniform(-5, 5)
-        start_y = self.np_random.uniform(-5, 5)
+        # Random starting position near origin, ensuring it's not in a black zone
+        max_attempts = 100
+        for _ in range(max_attempts):
+            start_x = self.np_random.uniform(-5, 5)
+            start_y = self.np_random.uniform(-5, 5)
+            # Check if position is valid (not in black zone)
+            if not self._is_position_in_black_zone(start_x, start_y):
+                break
+        else:
+            # If we couldn't find a valid position after max_attempts, use (0, 0)
+            start_x, start_y = 0.0, 0.0
+
         start_angle = self.np_random.uniform(-np.pi, np.pi)
 
         # Initialize with zero velocities (linear and angular)
         self.state = np.array([start_x, start_y, start_angle, 0.0, 0.0, 0.0], dtype=np.float32)
 
-        # Set random goal if not specified
-        if self.goal_position is None:
-            goal_x = self.np_random.uniform(-self.bounds * 0.8, self.bounds * 0.8)
-            goal_y = self.np_random.uniform(-self.bounds * 0.8, self.bounds * 0.8)
-            self.goal_position = np.array([goal_x, goal_y])
+        # Set random goal only if not manually specified
+        if not self.fixed_goal:
+            # Try to find a valid goal position (not in black zone)
+            max_attempts = 100
+            for _ in range(max_attempts):
+                goal_x = self.np_random.uniform(-self.bounds * 0.8, self.bounds * 0.8)
+                goal_y = self.np_random.uniform(-self.bounds * 0.8, self.bounds * 0.8)
+                # Check if position is valid (not in black zone)
+                if not self._is_position_in_black_zone(goal_x, goal_y):
+                    self.goal_position = np.array([goal_x, goal_y])
+                    break
+            else:
+                # If we couldn't find a valid position, use bounds edge
+                self.goal_position = np.array([self.bounds * 0.7, self.bounds * 0.7])
 
         self.steps = 0
 
@@ -197,14 +245,19 @@ class BoatEnv(gym.Env):
         # Calculate reward
         distance = self._distance_to_goal()
         reward = -1.0  # Constant negative reward per step
+        terminated = False
 
         # Check if goal is reached
-        terminated = distance <= self.goal_radius
-        if terminated:
+        goal_reached = distance <= self.goal_radius
+        if goal_reached:
             reward = 100.0  # Large positive reward for reaching goal
-
+            terminated = True
+        # Check if in black zone (obstacle)
+        elif self._is_in_black_zone():
+            reward = -25.0  # Penalty for hitting obstacle
+            # No termination, no reset - just apply penalty
         # Check if out of bounds
-        if abs(self.state[0]) > self.bounds or abs(self.state[1]) > self.bounds:
+        elif abs(self.state[0]) > self.bounds or abs(self.state[1]) > self.bounds:
             terminated = True
             reward = -10.0  # Penalty for going out of bounds
 
@@ -301,6 +354,44 @@ class BoatEnv(gym.Env):
     def _distance_to_goal(self):
         """Calculate Euclidean distance to goal."""
         return np.linalg.norm(self.state[:2] - self.goal_position)
+
+    def _is_position_in_black_zone(self, x, y):
+        """
+        Check if a given position is in a black zone (obstacle).
+
+        Args:
+            x, y: World coordinates to check
+
+        Returns:
+            bool: True if in black zone, False otherwise (or if no mask is loaded)
+        """
+        if self.mask is None:
+            return False
+
+        # Convert world coordinates to image pixel coordinates
+        # World: bottom-left origin, [-bounds, bounds] for both x and y
+        # Image: top-left origin, [0, width] x [0, height]
+        pixel_x = int((x + self.bounds) * self.mask_scale_x)
+        # Flip y-axis: world y increases upward, image y increases downward
+        pixel_y = self.mask.shape[0] - 1 - int((y + self.bounds) * self.mask_scale_y)
+
+        # Check if within mask bounds
+        if (pixel_x < 0 or pixel_x >= self.mask.shape[1] or
+            pixel_y < 0 or pixel_y >= self.mask.shape[0]):
+            return False  # Outside mask is considered safe
+
+        # Black pixels have low values (0), white pixels have high values (255)
+        # We consider it a black zone if pixel value is below threshold
+        return self.mask[pixel_y, pixel_x] < 128
+
+    def _is_in_black_zone(self):
+        """
+        Check if the current boat position is in a black zone (obstacle).
+
+        Returns:
+            bool: True if in black zone, False otherwise (or if no mask is loaded)
+        """
+        return self._is_position_in_black_zone(self.state[0], self.state[1])
 
     def render(self):
         """
