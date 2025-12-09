@@ -176,8 +176,8 @@ class BoatEnv(gym.Env):
         # Random starting position near origin, ensuring it's not in a black zone
         max_attempts = 100
         for _ in range(max_attempts):
-            start_x = self.np_random.uniform(-1, 1)
-            start_y = self.np_random.uniform(-1, 1)
+            start_x = self.np_random.uniform(-10, 10)
+            start_y = self.np_random.uniform(-10, 10)
             # Check if position is valid (not in black zone)
             if not self._is_position_in_black_zone(start_x, start_y):
                 break
