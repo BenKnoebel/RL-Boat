@@ -1,0 +1,253 @@
+\documentclass[11pt]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{booktabs}
+
+% Title and authors
+\title{\textbf{Reinforcement Learning for Aquatic Navigation:\\A Gymnasium Environment for Dual-Rudder Boat Control}}
+
+\author{
+Benjamin Knöbel del Olmo, Florian Schechner\\
+Harvard University\\
+ES 158: Optimal Control and Reinforcement Learning
+}
+
+\date{December 2025}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We present a reinforcement learning environment implemented in OpenAI Gymnasium that simulates a boat controlled by two independent rudders. The environment features a 6-dimensional continuous state space and a 9-dimensional discrete action space. The underlying dynamics are based on physical principles including force balances and friction modeling. We formulate the navigation task as an infinite-horizon Markov Decision Process with sparse rewards. Our implementation includes physics validation through friction testing, demonstrating behavior consistent with linear damping models. This environment serves as a testbed for evaluating RL algorithms in continuous-state control problems with coupled dynamics.
+\end{abstract}
+
+\section{Introduction}
+
+Autonomous navigation in aquatic environments presents unique challenges due to coupled dynamics where control inputs produce both translational and rotational motion. Traditional control approaches require precise mathematical models, while reinforcement learning offers an alternative where agents learn optimal policies through interaction with the environment.
+
+We consider a rowing boat equipped with two independently controlled rudders on the left and right sides. Each rudder can row forward, row backward, or remain idle, yielding $3^2 = 9$ discrete action combinations. The boat operates in a continuous two-dimensional environment with a six-dimensional state space consisting of position $(x, y)$, orientation $\theta$, linear velocity $(v_x, v_y)$, and angular velocity $\omega$.
+
+The control objective is to navigate from a random starting position to a goal location while minimizing travel time. This is formulated as an infinite-horizon MDP where the agent receives constant negative rewards until reaching the goal, incentivizing shortest-path behavior.
+
+\subsection{Related Work}
+
+OpenAI Gymnasium provides standard benchmarks for RL algorithms, including CartPole, MountainCar, and LunarLander. However, existing environments do not capture the unique physics of aquatic navigation with differential rudder control. Our work provides a physics-based aquatic environment specifically designed for RL research.
+
+\section{Environment Description}
+
+\subsection{State and Action Spaces}
+
+The state is represented as a 6-dimensional continuous vector:
+\begin{equation}
+\mathbf{s} = [x, y, \theta, v_x, v_y, \omega]^T
+\end{equation}
+
+where $x, y \in [-50, 50]$ m are the position coordinates, $\theta \in [-\pi, \pi]$ rad is the orientation, $v_x, v_y \in [-10, 10]$ m/s are velocity components, and $\omega \in [-2\pi, 2\pi]$ rad/s is the angular velocity.
+
+\begin{table}[h]
+\centering
+\caption{Action Space Encoding}
+\begin{tabular}{@{}cll@{}}
+\toprule
+\textbf{Action} & \textbf{Left} & \textbf{Right} \\
+\midrule
+0 & Idle & Idle \\
+1 & Forward & Idle \\
+2 & Backward & Idle \\
+3 & Idle & Forward \\
+4 & Idle & Backward \\
+5 & Forward & Forward \\
+6 & Backward & Backward \\
+7 & Forward & Backward \\
+8 & Backward & Forward \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Actions 5 and 6 produce pure translation, while actions 7 and 8 generate rotation. Single-rudder actions produce mixed effects.
+
+\subsection{Reward Structure}
+
+The reward function encourages efficient navigation:
+\begin{equation}
+r(s, a) = \begin{cases}
++100 & \text{if goal reached} \\
+-25 & \text{if in obstacle} \\
+-10 & \text{if out of bounds} \\
+-1 & \text{otherwise}
+\end{cases}
+\end{equation}
+
+Episodes terminate when the goal is reached (within 1.0 m radius), the boat exits the bounded region, or 500 timesteps are exceeded.
+
+\subsection{Physical Parameters}
+
+\begin{table}[h]
+\centering
+\caption{Physical Parameters}
+\begin{tabular}{@{}lc@{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Mass ($m$) & 120 kg \\
+Length ($L$) & 2.5 m \\
+Width ($W$) & 1.0 m \\
+Moment of inertia ($I$) & 65.625 kg$\cdot$m$^2$ \\
+Rudder force ($F_r$) & 80 N \\
+Lever arm ($\ell$) & 0.015 m \\
+Linear drag ($c_v$) & 0.2 N$\cdot$s/m \\
+Angular drag ($c_\omega$) & 0.8 N$\cdot$m$\cdot$s \\
+Time step ($\Delta t$) & 0.1 s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The moment of inertia is computed as $I = \frac{1}{12} m (L^2 + W^2)$ for a rectangular plate.
+
+\section{Physical Dynamics}
+
+\subsection{Rotational Dynamics}
+
+The rotational motion follows Newton's second law for rotation:
+\begin{equation}
+I \alpha = \tau_{rudders} + \tau_{drag}
+\end{equation}
+
+The rudder torque from differential forces is:
+\begin{equation}
+\tau_{rudders} = (F_L - F_R) \cdot \ell
+\end{equation}
+
+Angular drag is modeled as linear damping:
+\begin{equation}
+\tau_{drag} = -c_\omega \omega
+\end{equation}
+
+The angular acceleration and integration steps are:
+\begin{align}
+\alpha &= \frac{(F_L - F_R) \ell - c_\omega \omega}{I} \\
+\omega_{t+\Delta t} &= \omega_t + \alpha \Delta t \\
+\theta_{t+\Delta t} &= \theta_t + \omega_t \Delta t
+\end{align}
+
+\subsection{Translational Dynamics}
+
+The translational motion is governed by:
+\begin{equation}
+m \mathbf{a} = \mathbf{F}_{thrust} + \mathbf{F}_{drag}
+\end{equation}
+
+The thrust force acts in the boat's forward direction with magnitude $F_{thrust} = F_L + F_R$, producing global accelerations:
+\begin{align}
+a_{x,thrust} &= \frac{F_{thrust}}{m} \cos(\theta) \\
+a_{y,thrust} &= \frac{F_{thrust}}{m} \sin(\theta)
+\end{align}
+
+Linear drag opposes motion: $F_{drag,x} = -c_v v_x$ and $F_{drag,y} = -c_v v_y$.
+
+The total acceleration and integration are:
+\begin{align}
+a_x &= \frac{F_{thrust}}{m} \cos(\theta) - \frac{c_v}{m} v_x \\
+a_y &= \frac{F_{thrust}}{m} \sin(\theta) - \frac{c_v}{m} v_y \\
+v_{x,t+\Delta t} &= v_{x,t} + a_x \Delta t \\
+v_{y,t+\Delta t} &= v_{y,t} + a_y \Delta t \\
+x_{t+\Delta t} &= x_t + v_{x,t} \Delta t \\
+y_{t+\Delta t} &= y_t + v_{y,t} \Delta t
+\end{align}
+
+\section{Validation: Friction Testing}
+
+To verify the physics implementation, we conducted systematic friction tests. These tests ensure the damping forces behave as expected according to linear damping theory.
+
+\subsection{Test Methodology}
+
+We performed two tests:
+
+\textbf{Angular Friction Test:}
+\begin{enumerate}
+    \item Build up angular velocity by applying rotational control for 30 timesteps
+    \item Cease all control inputs and measure angular velocity decay
+    \item Compute angular deceleration from velocity measurements
+\end{enumerate}
+
+\textbf{Linear Friction Test:}
+\begin{enumerate}
+    \item Build up linear velocity by applying forward thrust for 30 timesteps
+    \item Cease all control inputs and measure speed decay
+    \item Compute linear deceleration from speed measurements
+\end{enumerate}
+
+\subsection{Theoretical Expectation}
+
+For linear damping, the friction force is proportional to velocity: $F = -c \cdot v$. When control ceases, velocity decays exponentially according to:
+\begin{equation}
+\frac{dv}{dt} = -\frac{c}{m} v
+\end{equation}
+
+The deceleration rate should remain approximately constant for moderate velocities, decreasing proportionally as velocity approaches zero.
+
+\subsection{Results}
+
+\textbf{Angular Friction:} Starting from $\omega_0 \approx 0.32$ rad/s, we measured:
+\begin{itemize}
+    \item Mean angular deceleration: $\bar{\alpha} \approx -0.0039$ rad/s$^2$
+    \item Coefficient of variation: $\approx 5.1\%$
+\end{itemize}
+
+\textbf{Linear Friction:} Starting from $v_0 \approx 1.15$ m/s, we measured:
+\begin{itemize}
+    \item Mean linear deceleration: $\bar{a} \approx -0.0019$ m/s$^2$
+    \item Coefficient of variation: $\approx 5.3\%$
+\end{itemize}
+
+The low coefficients of variation ($< 6\%$) confirm that deceleration remains approximately constant, validating the linear damping implementation. Both angular and linear velocities decay smoothly as predicted by theory.
+
+\section{Implementation}
+
+The environment is implemented in Python using the Gymnasium API. The code is organized into three modules: \texttt{boat\_env.py} (core environment), \texttt{renderer.py} (visualization using Matplotlib), and \texttt{test\_friction.py} (validation scripts).
+
+The renderer displays the boat position and orientation, goal location, trajectory history, and real-time state information including distance to goal and velocities. The environment supports both human visualization and RGB array output modes.
+
+\section{Discussion}
+
+Learning navigation policies in this environment presents several challenges. The coupled dynamics mean control inputs simultaneously affect translation and rotation, requiring coordinated rudder actions. The sparse reward structure (only positive at the goal) creates a difficult credit assignment problem. Additionally, the continuous state space and need to reach specific goal locations create exploration challenges.
+
+The environment is suitable for various RL algorithms including value-based methods (DQN), policy gradient methods (PPO), and actor-critic approaches. The discrete action space simplifies action selection while the continuous state space requires function approximation.
+
+\section{Conclusion}
+
+We have developed a physics-based RL environment for aquatic navigation with differential rudder control. The environment features realistic dynamics based on force balances and validated friction models. Systematic testing confirms the physics implementation behaves correctly according to linear damping theory.
+
+This environment provides a challenging testbed for RL algorithms due to coupled dynamics and sparse rewards. Future work includes implementing and benchmarking multiple RL algorithms, adding obstacle navigation, and extending to more complex scenarios with environmental disturbances.
+
+\section*{Acknowledgments}
+
+We thank the course staff of ES 158 for guidance throughout this project.
+
+\begin{thebibliography}{9}
+
+\bibitem{gym}
+Brockman, G., et al. (2016).
+OpenAI Gym.
+arXiv:1606.01540.
+
+\bibitem{sutton2018}
+Sutton, R. S., \& Barto, A. G. (2018).
+\textit{Reinforcement learning: An introduction} (2nd ed.).
+MIT Press.
+
+\bibitem{fossen2011}
+Fossen, T. I. (2011).
+\textit{Handbook of marine craft hydrodynamics and motion control}.
+John Wiley \& Sons.
+
+\end{thebibliography}
+
+\end{document}
