@@ -1,17 +1,26 @@
 """
-Deep Q-Network (DQN) Training Script for Boat Environment
+Double Deep Q-Network (DDQN) Training Script for Boat Environment
 
-This script trains a DQN agent to navigate from (0,0) to (5,5) using
+This script trains a Double DQN agent to navigate from (0,0) to (5,5) using
 the boat environment with two independent rudders.
+
+DOUBLE DQN KEY DIFFERENCES FROM DQN:
+- Action selection: Uses online network to SELECT the best action
+- Action evaluation: Uses target network to EVALUATE that action
+- This decoupling reduces overestimation bias in Q-value estimates
+- Formula: Q_target = r + γ * Q_target(s', argmax_a Q_online(s', a))
+
+Standard DQN uses: Q_target = r + γ * max_a Q_target(s', a)
+This leads to overestimation because the same network both selects and evaluates.
 
 PERFORMANCE OPTIMIZATIONS:
 - Larger batch size (256 vs 64) for better GPU utilization
-- Training every N steps (train_freq=4) instead of every step to reduce GPU transfer overhead
+- Training every N steps (train_freq=4) instead of every step
 - Non-blocking tensor transfers to GPU
-- Multiple gradient steps per training call for improved efficiency
+- Multiple gradient steps per training call
 - Reduced CPU-GPU synchronization points
 
-Expected speedup: 10-30x faster on GPU compared to non-optimized version.
+Reference: "Deep Reinforcement Learning with Double Q-learning" (van Hasselt et al., 2015)
 """
 
 import numpy as np
@@ -22,24 +31,23 @@ import torch.nn.functional as F
 from collections import deque
 import random
 import matplotlib.pyplot as plt
-from matplotlib.patches import Circle, Rectangle
 from datetime import datetime
 import os
 from envs.boat_env import BoatEnv
 
 
-class DQNNetwork(nn.Module):
+class DDQNNetwork(nn.Module):
     """
-    Deep Q-Network for the boat environment.
+    Neural network for Q-value approximation in Double DQN.
 
     Architecture:
-        - Input: 6-dimensional state space (x, y, angle, vx, vy, omega)
-        - Hidden layers: 3 fully connected layers with ReLU activation
-        - Output: Q-values for 9 discrete actions
+    - Input: 6D state (x, y, angle, vx, vy, angular_velocity)
+    - Hidden: 3 fully connected layers with ReLU activation
+    - Output: 9D Q-values (one for each action)
     """
 
     def __init__(self, state_dim=6, action_dim=9, hidden_dim=128):
-        super(DQNNetwork, self).__init__()
+        super(DDQNNetwork, self).__init__()
         self.fc1 = nn.Linear(state_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
         self.fc3 = nn.Linear(hidden_dim, hidden_dim)
@@ -53,29 +61,30 @@ class DQNNetwork(nn.Module):
 
 
 class ReplayBuffer:
-    """
-    Experience replay buffer for storing and sampling transitions.
-    """
+    """Experience replay buffer for storing and sampling transitions."""
 
     def __init__(self, capacity=100000):
         self.buffer = deque(maxlen=capacity)
 
     def push(self, state, action, reward, next_state, done):
+        """Add a transition to the buffer."""
         self.buffer.append((state, action, reward, next_state, done))
 
     def sample(self, batch_size):
+        """Sample a random batch of transitions."""
         batch = random.sample(self.buffer, batch_size)
-        state, action, reward, next_state, done = zip(*batch)
-        return (np.array(state), np.array(action), np.array(reward),
-                np.array(next_state), np.array(done))
+        states, actions, rewards, next_states, dones = zip(*batch)
+        return (np.array(states), np.array(actions), np.array(rewards),
+                np.array(next_states), np.array(dones))
 
     def __len__(self):
         return len(self.buffer)
 
 
-class DQNAgent:
+class DoubleDQNAgent:
     """
-    DQN Agent with experience replay and target network.
+    Double DQN Agent with experience replay and target network.
+    Uses Double Q-learning to reduce overestimation bias.
     Optimized for GPU training with reduced transfer overhead.
     """
 
@@ -84,7 +93,7 @@ class DQNAgent:
                  epsilon_decay=0.995, buffer_size=100000, batch_size=256,
                  target_update_freq=10, train_freq=4, num_gradient_steps=1):
         """
-        Initialize DQN Agent.
+        Initialize Double DQN Agent.
 
         Args:
             state_dim: Dimension of state space
@@ -114,25 +123,14 @@ class DQNAgent:
         # Device configuration
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"Using device: {self.device}")
+        print(f"Algorithm: Double DQN (reduces overestimation bias)")
         print(f"Optimizations: batch_size={batch_size}, train_freq={train_freq}, gradient_steps={num_gradient_steps}")
 
-        # Q-Network and Target Network
-        self.q_network = DQNNetwork(state_dim, action_dim).to(self.device)
-        self.target_network = DQNNetwork(state_dim, action_dim).to(self.device)
+        # Q-Network (online) and Target Network
+        self.q_network = DDQNNetwork(state_dim, action_dim).to(self.device)
+        self.target_network = DDQNNetwork(state_dim, action_dim).to(self.device)
         self.target_network.load_state_dict(self.q_network.state_dict())
         self.target_network.eval()
-
-        # PyTorch 2.0+ optimization: compile model for faster execution
-        # Note: Disabled on Windows due to Triton installation issues
-        # Uncomment below if you have Triton properly installed (Linux/WSL2)
-        # if hasattr(torch, 'compile') and self.device.type == 'cuda':
-        #     try:
-        #         print("Compiling models with torch.compile() for additional speedup...")
-        #         self.q_network = torch.compile(self.q_network)
-        #         self.target_network = torch.compile(self.target_network)
-        #         print("Model compilation successful!")
-        #     except Exception as e:
-        #         print(f"Model compilation skipped: {e}")
 
         # Optimizer and replay buffer
         self.optimizer = optim.Adam(self.q_network.parameters(), lr=learning_rate)
@@ -161,13 +159,18 @@ class DQNAgent:
         with torch.no_grad():
             state_tensor = torch.from_numpy(np.array(state, dtype=np.float32)).unsqueeze(0).to(self.device)
             q_values = self.q_network(state_tensor)
-            # Return without .item() to avoid CPU-GPU sync during batch processing
             return q_values.argmax(dim=1).item()
 
     def train_step(self):
         """
-        Perform multiple training steps on batches from replay buffer.
-        Optimized to reduce GPU transfer overhead and improve GPU utilization.
+        Perform multiple training steps using DOUBLE DQN update rule.
+
+        KEY DIFFERENCE FROM STANDARD DQN:
+        - Standard DQN: target = r + γ * max_a Q_target(s', a)
+        - Double DQN: target = r + γ * Q_target(s', argmax_a Q_online(s', a))
+
+        This decoupling reduces overestimation bias by separating action
+        selection (online network) from action evaluation (target network).
 
         Returns:
             Average loss value for monitoring (as tensor, no CPU-GPU sync)
@@ -191,10 +194,21 @@ class DQNAgent:
             # Compute current Q values
             current_q_values = self.q_network(states).gather(1, actions.unsqueeze(1))
 
-            # Compute target Q values using target network
+            # ==================== DOUBLE DQN UPDATE ====================
+            # Standard DQN would do: max_next_q = target_network(next_states).max(1)[0]
+            # Double DQN does the following:
+
             with torch.no_grad():
-                max_next_q_values = self.target_network(next_states).max(1)[0]
+                # Step 1: Use ONLINE network to SELECT the best action for next state
+                next_actions = self.q_network(next_states).argmax(1)
+
+                # Step 2: Use TARGET network to EVALUATE that selected action
+                next_q_values = self.target_network(next_states)
+                max_next_q_values = next_q_values.gather(1, next_actions.unsqueeze(1)).squeeze()
+
+                # Compute target Q values
                 target_q_values = rewards + (1 - dones) * self.gamma * max_next_q_values
+            # ============================================================
 
             # Compute loss
             loss = F.mse_loss(current_q_values.squeeze(), target_q_values)
@@ -222,13 +236,14 @@ class DQNAgent:
 
     def save(self, filepath):
         """Save model checkpoint."""
-        torch.save({
+        checkpoint = {
             'q_network_state_dict': self.q_network.state_dict(),
             'target_network_state_dict': self.target_network.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'epsilon': self.epsilon,
             'training_step': self.training_step
-        }, filepath)
+        }
+        torch.save(checkpoint, filepath)
 
     def load(self, filepath):
         """Load model checkpoint."""
@@ -240,13 +255,13 @@ class DQNAgent:
         self.training_step = checkpoint['training_step']
 
 
-def train_dqn(env, agent, num_episodes=1000, max_steps=500, print_freq=10, save_freq=50):
+def train_ddqn(env, agent, num_episodes=1000, max_steps=500, print_freq=10, save_freq=50):
     """
-    Train the DQN agent on the boat environment.
+    Train the Double DQN agent on the boat environment.
 
     Args:
         env: Boat environment
-        agent: DQN agent
+        agent: Double DQN agent
         num_episodes: Number of training episodes
         max_steps: Maximum steps per episode
         print_freq: Frequency to print training progress
@@ -256,8 +271,10 @@ def train_dqn(env, agent, num_episodes=1000, max_steps=500, print_freq=10, save_
         Training statistics dictionary
     """
     print("\n" + "="*70)
-    print(" "*20 + "DQN TRAINING STARTED")
+    print(" "*18 + "DOUBLE DQN TRAINING STARTED")
     print("="*70)
+    print(f"Algorithm: Double DQN (van Hasselt et al., 2015)")
+    print(f"Key Feature: Decoupled action selection and evaluation")
     print(f"Goal: Navigate from (0,0) to ({env.goal_position[0]:.0f},{env.goal_position[1]:.0f})")
     print(f"Episodes: {num_episodes} | Max Steps: {max_steps}")
     print(f"Device: {agent.device}")
@@ -274,7 +291,7 @@ def train_dqn(env, agent, num_episodes=1000, max_steps=500, print_freq=10, save_
     recent_successes = deque(maxlen=50)
 
     # Create checkpoint directory
-    os.makedirs('checkpoints', exist_ok=True)
+    os.makedirs('checkpoints_ddqn', exist_ok=True)
 
     for episode in range(1, num_episodes + 1):
         state, info = env.reset()
@@ -328,7 +345,7 @@ def train_dqn(env, agent, num_episodes=1000, max_steps=500, print_freq=10, save_
         # Save best model
         if episode_reward > best_reward:
             best_reward = episode_reward
-            agent.save('checkpoints/best_model.pth')
+            agent.save('checkpoints_ddqn/best_model.pth')
 
         # Print progress
         if episode % print_freq == 0:
@@ -347,128 +364,197 @@ def train_dqn(env, agent, num_episodes=1000, max_steps=500, print_freq=10, save_
 
         # Save checkpoint periodically
         if episode % save_freq == 0:
-            agent.save(f'checkpoints/checkpoint_ep{episode}.pth')
+            agent.save(f'checkpoints_ddqn/checkpoint_ep{episode}.pth')
 
     # Save final model
-    agent.save('checkpoints/final_model.pth')
+    agent.save('checkpoints_ddqn/final_model.pth')
 
     print("\n" + "="*70)
-    print(" "*20 + "TRAINING COMPLETED")
+    print("TRAINING COMPLETE!")
     print("="*70)
-    print(f"Total Episodes: {num_episodes}")
-    print(f"Final Success Rate: {(success_count/num_episodes)*100:.2f}%")
-    print(f"Best Episode Reward: {best_reward:.2f}")
-    print(f"Average Episode Reward: {np.mean(episode_rewards):.2f}")
-    print("="*70 + "\n")
 
     return {
         'episode_rewards': episode_rewards,
         'episode_lengths': episode_lengths,
         'episode_losses': episode_losses,
-        'success_rate': success_count / num_episodes
+        'success_rate': (np.mean(recent_successes) * 100) if len(recent_successes) > 0 else 0.0
     }
 
 
-def visualize_policy(env, agent, num_points=20, save_path='policy_visualization.png'):
+def plot_training_curves(stats, save_path='training_curves_ddqn.png'):
     """
-    Visualize the learned policy by showing action selections across the state space.
+    Plot training curves for episode rewards, lengths, and losses.
+
+    Args:
+        stats: Dictionary containing training statistics
+        save_path: Path to save the plot
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+
+    episode_rewards = stats['episode_rewards']
+    episode_lengths = stats['episode_lengths']
+    episode_losses = stats['episode_losses']
+
+    episodes = np.arange(1, len(episode_rewards) + 1)
+
+    # Plot 1: Episode Rewards
+    ax = axes[0, 0]
+    ax.plot(episodes, episode_rewards, alpha=0.3, color='blue', label='Raw')
+    # Moving average
+    window = 50
+    if len(episode_rewards) >= window:
+        moving_avg = np.convolve(episode_rewards, np.ones(window)/window, mode='valid')
+        ax.plot(episodes[window-1:], moving_avg, color='red', linewidth=2, label=f'Moving Avg ({window})')
+    ax.set_xlabel('Episode', fontsize=12)
+    ax.set_ylabel('Total Reward', fontsize=12)
+    ax.set_title('Episode Rewards (Double DQN)', fontsize=14, fontweight='bold')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # Plot 2: Episode Lengths
+    ax = axes[0, 1]
+    ax.plot(episodes, episode_lengths, alpha=0.3, color='green', label='Raw')
+    # Moving average
+    if len(episode_lengths) >= window:
+        moving_avg = np.convolve(episode_lengths, np.ones(window)/window, mode='valid')
+        ax.plot(episodes[window-1:], moving_avg, color='red', linewidth=2, label=f'Moving Avg ({window})')
+    ax.set_xlabel('Episode', fontsize=12)
+    ax.set_ylabel('Episode Length (steps)', fontsize=12)
+    ax.set_title('Episode Lengths (Double DQN)', fontsize=14, fontweight='bold')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # Plot 3: Training Loss
+    ax = axes[1, 0]
+    ax.plot(episodes, episode_losses, alpha=0.3, color='purple', label='Raw')
+    # Moving average
+    if len(episode_losses) >= window:
+        moving_avg = np.convolve(episode_losses, np.ones(window)/window, mode='valid')
+        ax.plot(episodes[window-1:], moving_avg, color='red', linewidth=2, label=f'Moving Avg ({window})')
+    ax.set_xlabel('Episode', fontsize=12)
+    ax.set_ylabel('Loss', fontsize=12)
+    ax.set_title('Training Loss (Double DQN)', fontsize=14, fontweight='bold')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # Plot 4: Success Rate (Rolling)
+    ax = axes[1, 1]
+    # Calculate rolling success rate (last 50 episodes)
+    rolling_window = 50
+    success_rates = []
+    for i in range(len(episode_rewards)):
+        start_idx = max(0, i - rolling_window + 1)
+        recent_episodes = episode_rewards[start_idx:i+1]
+        # Assume success if reward > 0 (simplified)
+        successes = sum(1 for r in recent_episodes if r > 0)
+        success_rates.append(100 * successes / len(recent_episodes))
+
+    ax.plot(episodes, success_rates, color='orange', linewidth=2)
+    ax.set_xlabel('Episode', fontsize=12)
+    ax.set_ylabel('Success Rate (%)', fontsize=12)
+    ax.set_title(f'Rolling Success Rate (Last {rolling_window} Episodes)', fontsize=14, fontweight='bold')
+    ax.set_ylim([0, 105])
+    ax.grid(True, alpha=0.3)
+    ax.axhline(y=100, color='green', linestyle='--', alpha=0.5, label='100%')
+    ax.legend()
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    print(f"\nTraining curves saved to: {save_path}")
+    plt.close()
+
+
+def visualize_policy(env, agent, save_path='policy_visualization_ddqn.png', grid_size=50):
+    """
+    Visualize the learned policy by showing the preferred action at different positions.
 
     Args:
         env: Boat environment
-        agent: Trained DQN agent
-        num_points: Number of grid points in each dimension
+        agent: Trained Double DQN agent
         save_path: Path to save visualization
+        grid_size: Number of grid points per dimension
     """
-    print("Generating policy visualization...")
+    print("\nGenerating policy visualization...")
 
     # Create grid of positions
-    x_range = np.linspace(-env.bounds * 0.8, env.bounds * 0.8, num_points)
-    y_range = np.linspace(-env.bounds * 0.8, env.bounds * 0.8, num_points)
+    x = np.linspace(-env.bounds, env.bounds, grid_size)
+    y = np.linspace(-env.bounds, env.bounds, grid_size)
+    X, Y = np.meshgrid(x, y)
 
-    # Action names for legend
-    action_names = [
-        "Both Idle", "L-Fwd, R-Idle", "L-Back, R-Idle",
-        "L-Idle, R-Fwd", "L-Idle, R-Back", "Both Forward",
-        "Both Backward", "Rotate Right", "Rotate Left"
-    ]
+    # For each position, determine the best action (pointing towards goal)
+    # We'll use a fixed angle pointing towards the goal
+    actions = np.zeros_like(X, dtype=int)
+    q_values_max = np.zeros_like(X)
 
-    # Action colors
-    colors = plt.cm.tab10(np.linspace(0, 1, 9))
+    goal_pos = env.goal_position
 
-    fig, ax = plt.subplots(figsize=(12, 10))
+    for i in range(grid_size):
+        for j in range(grid_size):
+            pos_x, pos_y = X[i, j], Y[i, j]
 
-    # For each grid point, determine the best action
-    for x in x_range:
-        for y in y_range:
             # Calculate angle towards goal
-            dx = env.goal_position[0] - x
-            dy = env.goal_position[1] - y
+            dx = goal_pos[0] - pos_x
+            dy = goal_pos[1] - pos_y
             angle_to_goal = np.arctan2(dy, dx)
 
-            # Create state (position, angle pointing to goal, zero velocities)
-            state = np.array([x, y, angle_to_goal, 0.0, 0.0, 0.0])
+            # Create state: [x, y, angle, vx, vy, omega]
+            state = np.array([pos_x, pos_y, angle_to_goal, 0.0, 0.0, 0.0], dtype=np.float32)
 
-            # Get best action from agent
-            action = agent.select_action(state, training=False)
+            # Get Q-values from agent
+            with torch.no_grad():
+                state_tensor = torch.from_numpy(state).unsqueeze(0).to(agent.device)
+                q_vals = agent.q_network(state_tensor).cpu().numpy()[0]
 
-            # Plot arrow indicating action
-            arrow_length = 2.0
-            if action == 0:  # Both idle
-                ax.scatter(x, y, c=[colors[action]], s=30, alpha=0.6)
-            elif action == 5:  # Both forward
-                ax.arrow(x, y, arrow_length * np.cos(angle_to_goal),
-                        arrow_length * np.sin(angle_to_goal),
-                        head_width=1, head_length=0.5, fc=colors[action],
-                        ec=colors[action], alpha=0.6)
-            elif action == 6:  # Both backward
-                ax.arrow(x, y, -arrow_length * np.cos(angle_to_goal),
-                        -arrow_length * np.sin(angle_to_goal),
-                        head_width=1, head_length=0.5, fc=colors[action],
-                        ec=colors[action], alpha=0.6)
-            elif action == 7:  # Rotate right
-                circle = Circle((x, y), radius=1.0, color=colors[action],
-                              fill=False, linewidth=2, alpha=0.6)
-                ax.add_patch(circle)
-            elif action == 8:  # Rotate left
-                circle = Circle((x, y), radius=1.0, color=colors[action],
-                              fill=True, alpha=0.3)
-                ax.add_patch(circle)
-            else:  # Single rudder actions
-                ax.scatter(x, y, c=[colors[action]], s=50, marker='s', alpha=0.6)
+            actions[i, j] = np.argmax(q_vals)
+            q_values_max[i, j] = np.max(q_vals)
 
-    # Plot start and goal
-    ax.scatter(0, 0, c='green', s=200, marker='*', label='Start (0,0)',
-              edgecolors='black', linewidths=2, zorder=10)
-    ax.scatter(env.goal_position[0], env.goal_position[1], c='red', s=200,
-              marker='*', label=f'Goal ({env.goal_position[0]:.0f},{env.goal_position[1]:.0f})',
-              edgecolors='black', linewidths=2, zorder=10)
+    # Create visualization
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
 
-    # Goal radius circle
-    goal_circle = Circle(env.goal_position, env.goal_radius, color='red',
-                         fill=False, linestyle='--', linewidth=2, label='Goal Radius')
-    ax.add_patch(goal_circle)
+    # Plot 1: Action map
+    action_names = [
+        "Idle", "L-Fwd", "L-Back", "R-Fwd", "R-Back",
+        "Both-F", "Both-B", "Rot-R", "Rot-L"
+    ]
 
-    # Create custom legend for actions
-    from matplotlib.patches import Patch
-    legend_elements = [Patch(facecolor=colors[i], label=action_names[i])
-                      for i in range(9)]
-    legend_elements.extend([
-        plt.Line2D([0], [0], marker='*', color='w', markerfacecolor='green',
-                   markersize=15, label='Start (0,0)'),
-        plt.Line2D([0], [0], marker='*', color='w', markerfacecolor='red',
-                   markersize=15, label=f'Goal ({env.goal_position[0]:.0f},{env.goal_position[1]:.0f})')
-    ])
+    im1 = ax1.imshow(actions, extent=[-env.bounds, env.bounds, -env.bounds, env.bounds],
+                     origin='lower', cmap='tab10', alpha=0.7, vmin=0, vmax=8)
+    ax1.scatter(goal_pos[0], goal_pos[1], c='red', s=500, marker='*',
+               edgecolors='black', linewidths=3, label='Goal', zorder=10)
+    ax1.scatter(0, 0, c='green', s=300, marker='o',
+               edgecolors='black', linewidths=2, label='Start (approx)', zorder=10)
 
-    ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.02, 1),
-             fontsize=9, framealpha=0.9)
+    # Add colorbar with action labels
+    cbar1 = plt.colorbar(im1, ax=ax1, ticks=np.arange(9))
+    cbar1.set_label('Action', fontsize=12)
+    cbar1.ax.set_yticklabels(action_names, fontsize=9)
 
-    ax.set_xlim(-env.bounds, env.bounds)
-    ax.set_ylim(-env.bounds, env.bounds)
-    ax.set_xlabel('X Position', fontsize=12)
-    ax.set_ylabel('Y Position', fontsize=12)
-    ax.set_title('Learned DQN Policy Visualization', fontsize=14, fontweight='bold')
-    ax.grid(True, alpha=0.3)
-    ax.set_aspect('equal')
+    ax1.set_xlabel('X Position (m)', fontsize=12)
+    ax1.set_ylabel('Y Position (m)', fontsize=12)
+    ax1.set_title('Learned Policy: Best Action at Each Position\n(Double DQN)',
+                  fontsize=14, fontweight='bold')
+    ax1.legend(fontsize=10)
+    ax1.grid(True, alpha=0.3)
+    ax1.set_aspect('equal')
+
+    # Plot 2: Q-value heatmap
+    im2 = ax2.imshow(q_values_max, extent=[-env.bounds, env.bounds, -env.bounds, env.bounds],
+                     origin='lower', cmap='viridis', alpha=0.8)
+    ax2.scatter(goal_pos[0], goal_pos[1], c='red', s=500, marker='*',
+               edgecolors='black', linewidths=3, label='Goal', zorder=10)
+    ax2.scatter(0, 0, c='green', s=300, marker='o',
+               edgecolors='black', linewidths=2, label='Start (approx)', zorder=10)
+
+    cbar2 = plt.colorbar(im2, ax=ax2)
+    cbar2.set_label('Max Q-Value', fontsize=12)
+
+    ax2.set_xlabel('X Position (m)', fontsize=12)
+    ax2.set_ylabel('Y Position (m)', fontsize=12)
+    ax2.set_title('Value Function: Max Q-Value at Each Position\n(Double DQN)',
+                  fontsize=14, fontweight='bold')
+    ax2.legend(fontsize=10)
+    ax2.grid(True, alpha=0.3)
+    ax2.set_aspect('equal')
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
@@ -476,140 +562,83 @@ def visualize_policy(env, agent, num_points=20, save_path='policy_visualization.
     plt.close()
 
 
-def plot_training_curves(stats, save_path='training_curves.png'):
-    """
-    Plot training curves showing rewards, episode lengths, and loss.
-
-    Args:
-        stats: Training statistics dictionary
-        save_path: Path to save plot
-    """
-    print("Generating training curves...")
-
-    fig, axes = plt.subplots(3, 1, figsize=(12, 10))
-
-    # Episode rewards
-    axes[0].plot(stats['episode_rewards'], alpha=0.3, color='blue', label='Episode Reward')
-    # Moving average
-    window = 20
-    if len(stats['episode_rewards']) >= window:
-        moving_avg = np.convolve(stats['episode_rewards'],
-                                np.ones(window)/window, mode='valid')
-        axes[0].plot(range(window-1, len(stats['episode_rewards'])),
-                    moving_avg, color='red', linewidth=2, label=f'{window}-Episode Moving Avg')
-    axes[0].set_xlabel('Episode', fontsize=11)
-    axes[0].set_ylabel('Total Reward', fontsize=11)
-    axes[0].set_title('Episode Rewards Over Training', fontsize=12, fontweight='bold')
-    axes[0].legend()
-    axes[0].grid(True, alpha=0.3)
-
-    # Episode lengths
-    axes[1].plot(stats['episode_lengths'], alpha=0.3, color='green', label='Episode Length')
-    if len(stats['episode_lengths']) >= window:
-        moving_avg = np.convolve(stats['episode_lengths'],
-                                np.ones(window)/window, mode='valid')
-        axes[1].plot(range(window-1, len(stats['episode_lengths'])),
-                    moving_avg, color='red', linewidth=2, label=f'{window}-Episode Moving Avg')
-    axes[1].set_xlabel('Episode', fontsize=11)
-    axes[1].set_ylabel('Steps', fontsize=11)
-    axes[1].set_title('Episode Lengths Over Training', fontsize=12, fontweight='bold')
-    axes[1].legend()
-    axes[1].grid(True, alpha=0.3)
-
-    # Training loss
-    axes[2].plot(stats['episode_losses'], alpha=0.3, color='purple', label='Episode Avg Loss')
-    if len(stats['episode_losses']) >= window:
-        moving_avg = np.convolve(stats['episode_losses'],
-                                np.ones(window)/window, mode='valid')
-        axes[2].plot(range(window-1, len(stats['episode_losses'])),
-                    moving_avg, color='red', linewidth=2, label=f'{window}-Episode Moving Avg')
-    axes[2].set_xlabel('Episode', fontsize=11)
-    axes[2].set_ylabel('Loss', fontsize=11)
-    axes[2].set_title('Training Loss Over Time', fontsize=12, fontweight='bold')
-    axes[2].legend()
-    axes[2].grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"Training curves saved to: {save_path}")
-    plt.close()
-
-
 def evaluate_agent(env, agent, num_episodes=10, render=False):
     """
-    Evaluate trained agent performance.
+    Evaluate the trained agent.
 
     Args:
         env: Boat environment
-        agent: Trained DQN agent
-        num_episodes: Number of evaluation episodes
-        render: Whether to render evaluation
+        agent: Trained Double DQN agent
+        num_episodes: Number of episodes to evaluate
+        render: Whether to render episodes
 
     Returns:
         Evaluation statistics
     """
     print("\n" + "="*70)
-    print(" "*25 + "EVALUATION")
+    print(" "*22 + "EVALUATION STARTED")
     print("="*70)
 
-    success_count = 0
     episode_rewards = []
     episode_lengths = []
+    successes = 0
 
     for episode in range(num_episodes):
         state, info = env.reset()
         episode_reward = 0
         done = False
-        step = 0
+        steps = 0
 
         while not done:
             action = agent.select_action(state, training=False)
             state, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             episode_reward += reward
-            step += 1
+            steps += 1
 
-            if render and env.render_mode == 'human':
+            if render:
                 env.render()
 
         episode_rewards.append(episode_reward)
-        episode_lengths.append(step)
+        episode_lengths.append(steps)
 
+        # Check if goal reached
         if info['distance_to_goal'] <= env.goal_radius:
-            success_count += 1
-            status = "SUCCESS"
-        else:
-            status = "FAILED"
+            successes += 1
 
-        print(f"Episode {episode+1:2d}: Reward={episode_reward:7.2f} | "
-              f"Length={step:3d} | Distance={info['distance_to_goal']:5.2f} | "
-              f"Status={status}")
+        status = "SUCCESS" if info['distance_to_goal'] <= env.goal_radius else "FAILED"
+        print(f"Episode {episode+1:2d}: Reward = {episode_reward:7.2f}, "
+              f"Steps = {steps:3d}, Status = {status}")
 
-    print("="*70)
-    print(f"Success Rate: {(success_count/num_episodes)*100:.2f}%")
-    print(f"Average Reward: {np.mean(episode_rewards):.2f} ± {np.std(episode_rewards):.2f}")
-    print(f"Average Length: {np.mean(episode_lengths):.2f} ± {np.std(episode_lengths):.2f}")
+    print("-"*70)
+    print(f"Average Reward: {np.mean(episode_rewards):7.2f} ± {np.std(episode_rewards):.2f}")
+    print(f"Average Length: {np.mean(episode_lengths):7.2f} ± {np.std(episode_lengths):.2f}")
+    print(f"Success Rate: {successes}/{num_episodes} ({100*successes/num_episodes:.1f}%)")
     print("="*70 + "\n")
 
     return {
-        'success_rate': success_count / num_episodes,
-        'avg_reward': np.mean(episode_rewards),
-        'avg_length': np.mean(episode_lengths)
+        'mean_reward': np.mean(episode_rewards),
+        'std_reward': np.std(episode_rewards),
+        'mean_length': np.mean(episode_lengths),
+        'std_length': np.std(episode_lengths),
+        'success_rate': successes / num_episodes
     }
 
 
 def main():
     """Main training function."""
-    # Set random seeds for reproducibility
-    np.random.seed(42)
-    torch.manual_seed(42)
-    random.seed(42)
+    print("\n" + "="*70)
+    print(" "*15 + "DOUBLE DQN BOAT NAVIGATION TRAINING")
+    print("="*70)
+    print(f"Start Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("="*70)
 
-    # Create environment with goal at (5, 5)
+    # Create environment
     env = BoatEnv(
         goal_position=[5.0, 5.0],
-        bounds=50.0,  # Bounds for environment
+        bounds=50.0,
         max_steps=500,
+        goal_radius=1.0,
         render_mode=None  # Set to 'human' for visualization during training
     )
 
@@ -618,8 +647,8 @@ def main():
     print(f"Action space: {env.action_space}")
     print(f"Goal position: {env.goal_position}")
 
-    # Create DQN agent with optimized hyperparameters
-    agent = DQNAgent(
+    # Create Double DQN agent with optimized hyperparameters
+    agent = DoubleDQNAgent(
         state_dim=6,
         action_dim=9,
         learning_rate=0.001,
@@ -635,7 +664,7 @@ def main():
     )
 
     # Train agent
-    stats = train_dqn(
+    stats = train_ddqn(
         env=env,
         agent=agent,
         num_episodes=3000,
@@ -645,17 +674,17 @@ def main():
     )
 
     # Plot training curves
-    plot_training_curves(stats, save_path='training_curves.png')
+    plot_training_curves(stats, save_path='training_curves_ddqn.png')
 
     # Visualize learned policy
-    visualize_policy(env, agent, num_points=20, save_path='policy_visualization.png')
+    visualize_policy(env, agent, save_path='policy_visualization_ddqn.png')
 
     # Evaluate trained agent
     eval_stats = evaluate_agent(env, agent, num_episodes=10, render=False)
 
     env.close()
-    print("\nTraining complete! Check 'checkpoints/' directory for saved models.")
-    print("Visualizations saved: 'training_curves.png' and 'policy_visualization.png'")
+    print("\nTraining complete! Check 'checkpoints_ddqn/' directory for saved models.")
+    print("Visualizations saved: 'training_curves_ddqn.png' and 'policy_visualization_ddqn.png'")
 
 
 if __name__ == "__main__":

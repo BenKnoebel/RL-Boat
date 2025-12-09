@@ -21,6 +21,7 @@ import random
 import matplotlib.pyplot as plt
 from datetime import datetime
 import os
+from collections import deque
 from envs.boat_env import BoatEnv
 
 
@@ -219,6 +220,9 @@ def train_sarsa(env, agent, num_episodes=500, max_steps=500, print_freq=10, save
     success_count = 0
     best_reward = float('-inf')
 
+    # Rolling success rate tracker (last 50 episodes)
+    recent_successes = deque(maxlen=50)
+
     # Create checkpoint directory
     os.makedirs('checkpoints_sarsa', exist_ok=True)
 
@@ -262,8 +266,12 @@ def train_sarsa(env, agent, num_episodes=500, max_steps=500, print_freq=10, save
         episode_td_errors.append(avg_td_error)
 
         # Check if goal was reached
-        if info['distance_to_goal'] <= env.goal_radius:
+        goal_reached = info['distance_to_goal'] <= env.goal_radius
+        if goal_reached:
             success_count += 1
+
+        # Track success for rolling window
+        recent_successes.append(1 if goal_reached else 0)
 
         # Save best model
         if episode_reward > best_reward:
@@ -275,14 +283,15 @@ def train_sarsa(env, agent, num_episodes=500, max_steps=500, print_freq=10, save
             avg_reward = np.mean(episode_rewards[-print_freq:])
             avg_length = np.mean(episode_lengths[-print_freq:])
             avg_td = np.mean(episode_td_errors[-print_freq:])
-            success_rate = (success_count / episode) * 100
+            # Rolling success rate over last 50 episodes
+            success_rate = (np.mean(recent_successes) * 100) if len(recent_successes) > 0 else 0.0
 
             print(f"Episode {episode:4d}/{num_episodes} | "
                   f"Avg Reward: {avg_reward:7.2f} | "
                   f"Avg Length: {avg_length:5.1f} | "
                   f"TD Error: {avg_td:6.4f} | "
                   f"Epsilon: {agent.epsilon:.3f} | "
-                  f"Success Rate: {success_rate:5.2f}%")
+                  f"Success Rate (Last 50): {success_rate:5.2f}%")
 
         # Save checkpoint periodically
         if episode % save_freq == 0:

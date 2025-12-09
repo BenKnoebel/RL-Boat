@@ -156,6 +156,7 @@ class BoatEnv(gym.Env):
         # State variables
         self.state = None
         self.steps = 0
+        self.previous_distance = None  # Track previous distance for reward calculation
 
         # Renderer for visualization
         self.renderer = None
@@ -206,6 +207,9 @@ class BoatEnv(gym.Env):
 
         self.steps = 0
 
+        # Initialize previous distance for reward calculation
+        self.previous_distance = self._distance_to_goal()
+
         # Reset renderer if visualization is enabled
         if self.renderer is not None:
             self.renderer.reset()
@@ -242,15 +246,20 @@ class BoatEnv(gym.Env):
         # Update step counter
         self.steps += 1
 
-        # Calculate reward
-        distance = self._distance_to_goal()
-        reward = -0.1*distance  # Constant negative reward per step
+        # Calculate reward based on distance change
+        current_distance = self._distance_to_goal()
+
+        reward = -0.1 * current_distance
+
+        # Update previous distance for next step
+        self.previous_distance = current_distance
+
         terminated = False
 
         # Check if goal is reached
-        goal_reached = distance <= self.goal_radius
+        goal_reached = current_distance <= self.goal_radius
         if goal_reached:
-            reward = 1000.0  # Large positive reward for reaching goal
+            reward += 1000.0  # Large bonus reward for reaching goal
             terminated = True
         # Check if in black zone (obstacle)
         #elif self._is_in_black_zone():
@@ -266,7 +275,7 @@ class BoatEnv(gym.Env):
         truncated = self.steps >= self.max_steps
 
         info = {
-            'distance_to_goal': distance,
+            'distance_to_goal': current_distance,
             'steps': self.steps,
             'goal_position': self.goal_position.copy()
         }
