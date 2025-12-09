@@ -53,10 +53,10 @@ class BoatEnv(gym.Env):
                  max_steps=500,
                  bounds=50.0,
                  boat_mass=120.0,
-                 rudder_force=80.0,
-                 lever_arm=0.015,
-                 friction_coeff=1,
-                 angular_drag_coeff=10,
+                 rudder_force=750.0,
+                 lever_arm=0.1,
+                 friction_coeff=5,
+                 angular_drag_coeff=100,
                  dt=0.1,
                  render_mode=None):
         """
@@ -175,8 +175,8 @@ class BoatEnv(gym.Env):
         # Random starting position near origin, ensuring it's not in a black zone
         max_attempts = 100
         for _ in range(max_attempts):
-            start_x = self.np_random.uniform(-5, 5)
-            start_y = self.np_random.uniform(-5, 5)
+            start_x = self.np_random.uniform(-1, 1)
+            start_y = self.np_random.uniform(-1, 1)
             # Check if position is valid (not in black zone)
             if not self._is_position_in_black_zone(start_x, start_y):
                 break
@@ -244,22 +244,23 @@ class BoatEnv(gym.Env):
 
         # Calculate reward
         distance = self._distance_to_goal()
-        reward = -1.0  # Constant negative reward per step
+        reward = -0.1*distance  # Constant negative reward per step
         terminated = False
 
         # Check if goal is reached
         goal_reached = distance <= self.goal_radius
         if goal_reached:
-            reward = 100.0  # Large positive reward for reaching goal
+            reward = 1000.0  # Large positive reward for reaching goal
             terminated = True
         # Check if in black zone (obstacle)
-        elif self._is_in_black_zone():
-            reward = -25.0  # Penalty for hitting obstacle
+        #elif self._is_in_black_zone():
+            #reward = -25.0  # Penalty for hitting obstacle
             # No termination, no reset - just apply penalty
         # Check if out of bounds
-        elif abs(self.state[0]) > self.bounds or abs(self.state[1]) > self.bounds:
-            terminated = True
-            reward = -10.0  # Penalty for going out of bounds
+        #elif abs(self.state[0]) > self.bounds or abs(self.state[1]) > self.bounds:
+            #terminated = True
+            #reward = -10.0  # Penalty for going out of bounds
+        
 
         # Check if max steps exceeded
         truncated = self.steps >= self.max_steps
